@@ -208,7 +208,7 @@ async function callOpenRouterChat(payload, apiKey) {
     throw new Error('Вкажіть API ключ OpenRouter у налаштуваннях');
   }
 
-  const res = await fetch(OPENROUTER_CHAT_URL, {
+  let res = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: getOpenRouterHeaders(apiKey),
     body: JSON.stringify(payload)
@@ -217,6 +217,24 @@ async function callOpenRouterChat(payload, apiKey) {
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     const rawMsg = errData?.error?.message || errData?.message || '';
+
+    // If openrouter/free or an endpoint routed to a model that forbids disabling reasoning, retry without reasoning
+    if (res.status === 400 && String(rawMsg).includes('Reasoning is mandatory') && payload?.reasoning) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.reasoning;
+      const retryRes = await fetch(OPENROUTER_CHAT_URL, {
+        method: 'POST',
+        headers: getOpenRouterHeaders(apiKey),
+        body: JSON.stringify(fallbackPayload)
+      });
+      if (retryRes.ok) {
+        return retryRes.json();
+      }
+      const retryErr = await retryRes.json().catch(() => ({}));
+      const retryMsg = retryErr?.error?.message || retryErr?.message || '';
+      throw new Error(retryMsg || `Помилка перекладу OpenRouter (${retryRes.status})`);
+    }
+
     const upstream = errData?.error?.metadata?.raw || '';
     const fullMsg = upstream ? `${rawMsg}: ${upstream}` : rawMsg;
     throw new Error(fullMsg || `Помилка перекладу OpenRouter (${res.status})`);
