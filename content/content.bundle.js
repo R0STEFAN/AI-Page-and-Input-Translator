@@ -818,6 +818,81 @@
     return (el.innerText !== undefined ? el.innerText : el.textContent) || '';
   }
   
+  function selectAllContentEditable(el, currentDoc, currentWin) {
+    if (!el) return;
+    const EventCtor = currentWin?.Event || (typeof Event !== 'undefined' ? Event : null);
+    const KeyboardEventCtor = currentWin?.KeyboardEvent || (typeof KeyboardEvent !== 'undefined' ? KeyboardEvent : null);
+  
+    if (typeof el.focus === 'function') {
+      try {
+        el.focus({ preventScroll: true });
+      } catch {
+        el.focus();
+      }
+    }
+  
+    const rootNode = typeof el.getRootNode === 'function' ? el.getRootNode() : null;
+    const sel = (typeof rootNode?.getSelection === 'function' ? rootNode.getSelection() : null)
+      || (typeof currentWin?.getSelection === 'function' ? currentWin.getSelection() : null);
+  
+    if (sel?.removeAllRanges && sel?.addRange && typeof currentDoc?.createRange === 'function') {
+      try {
+        const range = currentDoc.createRange();
+        let placedOnText = false;
+  
+        if (typeof currentDoc.createTreeWalker === 'function') {
+          const walker = currentDoc.createTreeWalker(el, 4 /* NodeFilter.SHOW_TEXT */);
+          let firstText = null;
+          let lastText = null;
+          let node = walker.nextNode();
+          while (node) {
+            if (!firstText) firstText = node;
+            lastText = node;
+            node = walker.nextNode();
+          }
+          if (firstText && lastText && typeof range.setStart === 'function' && typeof range.setEnd === 'function') {
+            range.setStart(firstText, 0);
+            range.setEnd(lastText, (lastText.nodeValue || lastText.textContent || '').length);
+            placedOnText = true;
+          }
+        }
+  
+        if (!placedOnText && typeof range.selectNodeContents === 'function') {
+          range.selectNodeContents(el);
+        }
+  
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } catch {}
+    }
+  
+    if (typeof currentDoc?.execCommand === 'function') {
+      try {
+        currentDoc.execCommand('selectAll', false, null);
+      } catch {}
+    }
+  
+    if (KeyboardEventCtor && typeof el.dispatchEvent === 'function') {
+      try {
+        el.dispatchEvent(new KeyboardEventCtor('keydown', {
+          key: 'a',
+          code: 'KeyA',
+          keyCode: 65,
+          which: 65,
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true
+        }));
+      } catch {}
+    }
+  
+    if (EventCtor && typeof currentDoc?.dispatchEvent === 'function') {
+      try {
+        currentDoc.dispatchEvent(new EventCtor('selectionchange'));
+      } catch {}
+    }
+  }
+  
   function writeEditableText(
     el,
     translatedText,
@@ -827,10 +902,6 @@
     const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
     const currentWin = win || (typeof window !== 'undefined' ? window : null);
     if (!el) return false;
-  
-    if (typeof el.focus === 'function') {
-      el.focus();
-    }
   
     const tag = el.tagName?.toUpperCase();
     const EventCtor = currentWin?.Event || (typeof Event !== 'undefined' ? Event : null);
@@ -876,9 +947,6 @@
         if (typeof el.dispatchEvent === 'function') {
           if (InputEventCtor) {
             try {
-              el.dispatchEvent(new InputEventCtor('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: translatedText }));
-            } catch {}
-            try {
               el.dispatchEvent(new InputEventCtor('input', { bubbles: true, inputType: 'insertReplacementText', data: translatedText }));
             } catch {
               if (EventCtor) el.dispatchEvent(new EventCtor('input', { bubbles: true }));
@@ -894,32 +962,21 @@
       return true;
     }
   
-    // Rich-text / contenteditable: select all automatically before replacing
-    const selectAllContentEditable = () => {
-      const rootNode = typeof el.getRootNode === 'function' ? el.getRootNode() : null;
-      const sel = (typeof rootNode?.getSelection === 'function' ? rootNode.getSelection() : null)
-        || (typeof currentWin?.getSelection === 'function' ? currentWin.getSelection() : null);
+    // Rich-text / contenteditable: select all and clear first, never stack multiple insertions
+    const readText = () => (el.innerText !== undefined ? el.innerText : el.textContent) || '';
   
-      if (sel?.removeAllRanges && sel?.addRange && typeof currentDoc?.createRange === 'function') {
-        try {
-          const range = currentDoc.createRange();
-          if (typeof range.selectNodeContents === 'function') {
-            range.selectNodeContents(el);
-            sel.removeAllRanges();
-            sel.addRange(range);
-          }
-        } catch {}
-      }
+    selectAllContentEditable(el, currentDoc, currentWin);
+    if (typeof currentDoc?.execCommand === 'function') {
+      try {
+        currentDoc.execCommand('delete', false, null);
+      } catch {}
+    }
   
-      if (typeof currentDoc?.execCommand === 'function') {
-        try {
-          currentDoc.execCommand('selectAll', false, null);
-        } catch {}
-      }
-    };
+    if (readText().trim()) {
+      selectAllContentEditable(el, currentDoc, currentWin);
+    }
   
     let execOk = false;
-    selectAllContentEditable();
     if (typeof currentDoc?.execCommand === 'function') {
       try {
         execOk = Boolean(currentDoc.execCommand('insertText', false, translatedText));
@@ -928,14 +985,19 @@
       }
     }
   
-    let currentVal = (el.innerText !== undefined ? el.innerText : el.textContent) || '';
-    if (!execOk || currentVal.trim() !== translatedText.trim()) {
+    let currentVal = readText();
+    if (currentVal.trim() === translatedText.trim()) {
+      return true;
+    }
+  
+    // Only attempt paste if insertText did NOT already insert translatedText into the editor
+    if (!currentVal.includes(translatedText)) {
       const ClipboardEventCtor = currentWin?.ClipboardEvent || (typeof ClipboardEvent !== 'undefined' ? ClipboardEvent : null);
       const DataTransferCtor = currentWin?.DataTransfer || (typeof DataTransfer !== 'undefined' ? DataTransfer : null);
   
       if (ClipboardEventCtor && DataTransferCtor && typeof el.dispatchEvent === 'function') {
         try {
-          selectAllContentEditable();
+          selectAllContentEditable(el, currentDoc, currentWin);
           const dt = new DataTransferCtor();
           dt.setData('text/plain', translatedText);
           const pasteEvent = new ClipboardEventCtor('paste', {
@@ -948,8 +1010,8 @@
       }
     }
   
-    currentVal = (el.innerText !== undefined ? el.innerText : el.textContent) || '';
-    if (currentVal.trim() !== translatedText.trim()) {
+    currentVal = readText();
+    if (currentVal.trim() !== translatedText.trim() && !currentVal.includes(translatedText)) {
       if (el.innerText !== undefined) {
         el.innerText = translatedText;
       } else {
@@ -958,9 +1020,6 @@
   
       if (typeof el.dispatchEvent === 'function') {
         if (InputEventCtor) {
-          try {
-            el.dispatchEvent(new InputEventCtor('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: translatedText }));
-          } catch {}
           try {
             el.dispatchEvent(new InputEventCtor('input', { bubbles: true, inputType: 'insertReplacementText', data: translatedText }));
           } catch {
@@ -1008,7 +1067,7 @@
       const timer = typeof setTimeout === 'function' ? setTimeout : (fn) => fn();
       timer(() => {
         if (overlay.remove) overlay.remove();
-      }, 300);
+      }, 60);
     };
   }
   
@@ -1055,6 +1114,12 @@
   
       const translated = res.data?.translation;
       if (typeof translated === 'string' && translated.trim()) {
+        const tag = (targetEl.tagName || '').toUpperCase();
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && typeof setTimeout === 'function') {
+          // Pre-select and yield one macrotask so rich editors (e.g. Lexical/Reddit) sync selectionchange before replace
+          selectAllContentEditable(targetEl, currentDoc, currentWin);
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
         writeEditableText(targetEl, translated, currentDoc, currentWin);
       }
   

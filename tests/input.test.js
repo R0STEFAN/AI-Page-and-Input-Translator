@@ -580,3 +580,56 @@ test('findActiveEditableElement falls back to visible non-empty editable when ac
 
   assert.equal(findActiveEditableElement(doc), visibleEditor);
 });
+
+test('writeEditableText clears contenteditable before insert and never duplicates text on paste/beforeinput', () => {
+  const doc = new MockDoc();
+  const editor = new MockEditableElement('div', {
+    isContentEditable: true,
+    innerText: 'Початковий текст'
+  });
+
+  const execCalls = [];
+  doc.execCommand = (cmd, _ui, val) => {
+    execCalls.push({ cmd, val });
+    // Simulate a quirky rich-text editor where delete fails, insertText appends once instead of replacing
+    if (cmd === 'insertText') {
+      editor.innerText += val;
+      return true;
+    }
+    return cmd === 'selectAll';
+  };
+  doc.createRange = () => ({ selectNodeContents: () => {} });
+
+  class FakeDataTransfer {
+    constructor() { this.data = new Map(); }
+    setData(type, val) { this.data.set(type, val); }
+    getData(type) { return this.data.get(type) || ''; }
+  }
+  class FakeClipboardEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.clipboardData = init.clipboardData;
+    }
+  }
+  const origDispatch = editor.dispatchEvent.bind(editor);
+  editor.dispatchEvent = (ev) => {
+    origDispatch(ev);
+    if (ev.type === 'paste') {
+      editor.innerText += ev.clipboardData.getData('text/plain');
+    }
+  };
+
+  const win = {
+    getSelection: () => ({ removeAllRanges: () => {}, addRange: () => {} }),
+    ClipboardEvent: FakeClipboardEvent,
+    DataTransfer: FakeDataTransfer
+  };
+
+  writeEditableText(editor, 'Translated text', doc, win);
+
+  assert.ok(execCalls.some(c => c.cmd === 'delete'), 'Should attempt execCommand("delete") before insert');
+  assert.equal(editor.dispatchedEvents.filter(e => e.type === 'paste').length, 0, 'Must NOT paste again after insertText already inserted translated text');
+  assert.equal(editor.dispatchedEvents.filter(e => e.type === 'beforeinput').length, 0, 'Must NOT fire extra beforeinput that would duplicate text');
+  const occurrences = editor.innerText.split('Translated text').length - 1;
+  assert.equal(occurrences, 1, 'Translated text must appear at most once');
+});

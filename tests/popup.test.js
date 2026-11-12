@@ -532,3 +532,38 @@ test('toggleTranslateBtn handles restore failure gracefully and alerts error', a
   assert.equal(res.toggleBtn.disabled, false);
   assert.ok(res.progressBox.classList.contains('hidden'));
 });
+
+test('initPopup reads chrome.storage.sync directly without waking background SW via GET_SETTINGS', async () => {
+  const doc = createMockPopupDoc();
+  let swSettingsCalls = 0;
+
+  const chromeApi = {
+    storage: {
+      sync: {
+        get: async (defaults) => ({
+          ...defaults,
+          activeEngine: 'gemini',
+          geminiApiKey: 'direct-key',
+          geminiModel: 'gemini-2.5-flash',
+          targetLanguage: 'Українська',
+          inputTargetLanguage: 'English'
+        })
+      }
+    },
+    tabs: {
+      query: async () => [{ id: 12 }],
+      sendMessage: async () => ({ ok: true, isTranslated: false })
+    },
+    runtime: {
+      sendMessage: async (msg) => {
+        if (msg.type === 'GET_SETTINGS') swSettingsCalls += 1;
+        return {};
+      },
+      onMessage: { addListener: () => {} }
+    }
+  };
+
+  const res = await initPopup(doc, chromeApi);
+  assert.equal(swSettingsCalls, 0, 'Should skip GET_SETTINGS message when chrome.storage is available');
+  assert.ok(res.engineBadge.textContent.includes('gemini-2.5-flash'));
+});

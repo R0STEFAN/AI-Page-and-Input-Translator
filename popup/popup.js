@@ -1,3 +1,5 @@
+import { DEFAULT_SETTINGS } from '../background/storage.js';
+
 export function updateButtonState(toggleBtn, translated) {
   if (!toggleBtn) return;
   if (translated) {
@@ -35,7 +37,7 @@ export async function initPopup(
     });
   }
 
-  // Query active tab and load settings in parallel for instant popup startup
+  // Query active tab, check page status, and read storage directly in parallel (skips SW cold start)
   const tabsPromise = chromeApi?.tabs?.query
     ? Promise.resolve(chromeApi.tabs.query({ active: true, currentWindow: true })).catch(err => {
         console.warn('Failed to query active tab:', err);
@@ -43,12 +45,31 @@ export async function initPopup(
       })
     : Promise.resolve([]);
 
-  const settingsPromise = chromeApi?.runtime?.sendMessage
-    ? Promise.resolve(chromeApi.runtime.sendMessage({ type: 'GET_SETTINGS' })).catch(err => {
-        console.warn('Failed to get settings:', err);
-        return {};
-      })
-    : Promise.resolve({});
+  const pageStatusPromise = tabsPromise.then(async (tabs) => {
+    const tab = tabs?.[0] || null;
+    if (!tab?.id || !chromeApi?.tabs?.sendMessage) return false;
+    try {
+      const pageStatus = await chromeApi.tabs.sendMessage(tab.id, { action: 'GET_PAGE_STATUS' });
+      return Boolean(pageStatus?.isTranslated);
+    } catch {
+      return false;
+    }
+  });
+
+  const storageArea = chromeApi?.storage?.sync || chromeApi?.storage?.local;
+  const settingsPromise = typeof storageArea?.get === 'function'
+    ? Promise.resolve(storageArea.get(DEFAULT_SETTINGS))
+        .then(data => ({ data: { ...DEFAULT_SETTINGS, ...(data || {}) } }))
+        .catch(err => {
+          console.warn('Failed to read storage settings:', err);
+          return { data: { ...DEFAULT_SETTINGS } };
+        })
+    : chromeApi?.runtime?.sendMessage
+      ? Promise.resolve(chromeApi.runtime.sendMessage({ type: 'GET_SETTINGS' })).catch(err => {
+          console.warn('Failed to get settings:', err);
+          return {};
+        })
+      : Promise.resolve({});
 
   const [tabs, settingsRes] = await Promise.all([tabsPromise, settingsPromise]);
   const tab = tabs?.[0] || null;
@@ -115,21 +136,11 @@ export async function initPopup(
     }
   }
 
-  // Check Page Status
   let isTranslated = false;
-  try {
-    const pageStatus = await chromeApi?.tabs?.sendMessage?.(tab.id, { action: 'GET_PAGE_STATUS' });
-    isTranslated = Boolean(pageStatus?.isTranslated);
-  } catch {
-    // Content script might not be injected on restricted pages (e.g. chrome://)
-  }
-
   function setButtonState(translated) {
     isTranslated = translated;
     updateButtonState(toggleBtn, isTranslated);
   }
-
-  setButtonState(isTranslated);
 
   // Listen for progress updates
   const progressListener = (msg) => {
@@ -145,6 +156,7 @@ export async function initPopup(
 
   chromeApi?.runtime?.onMessage?.addListener?.(progressListener);
 
+  // Attach click handlers immediately before awaiting GET_PAGE_STATUS
   if (toggleBtn) {
     toggleBtn.addEventListener('click', async () => {
       toggleBtn.disabled = true;
@@ -208,6 +220,8 @@ export async function initPopup(
       }
     });
   }
+
+  setButtonState(await pageStatusPromise);
 
   return {
     engineBadge,
