@@ -60,10 +60,22 @@
 
       <!-- Local Model Settings -->
       <section id="localSection" class="engine-section hidden">
-        <h3>Вбудована модель NLLB-200 (WebGPU)</h3>
-        <p class="description">Модель завантажується безпосередньо в сховище вашого браузера один раз і працює автономно.</p>
+        <h3>Вбудована автономна модель (WebGPU / WASM)</h3>
+        <p class="description">Модель завантажується в пам'ять браузера один раз і працює автономно без сторонніх серверів.</p>
+
+        <div class="form-group">
+          <label for="localModelSelect">Вибір локальної моделі:</label>
+          <select id="localModelSelect">
+            <option value="Xenova/opus-mt-en-uk" selected>OPUS-MT (Легка ~105 МБ, EN → UK) — Рекомендовано для звичайних ПК та ноутбуків</option>
+            <option value="Xenova/nllb-200-distilled-600M">NLLB-200 (Мультимовна ~874 МБ, 200 мов) — Для потужних ПК</option>
+          </select>
+          <p id="localModelDesc" class="field-hint" style="margin-top: 6px; font-size: 12px; color: #64748b;">
+            Оптимізована модель MarianMT: у 8 разів легша за NLLB, працює швидко і майже не навантажує Core i5 та вбудовану графіку.
+          </p>
+        </div>
+
         <div class="download-box">
-          <button type="button" id="downloadModelBtn" class="btn btn-primary">Завантажити модель (~300 МБ)</button>
+          <button type="button" id="downloadModelBtn" class="btn btn-primary">Завантажити модель</button>
           <span id="modelStatusBadge" class="badge">Не завантажено</span>
         </div>
         <div id="progressContainer" class="progress-container hidden">

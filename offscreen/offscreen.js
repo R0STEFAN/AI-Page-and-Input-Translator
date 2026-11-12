@@ -34,6 +34,19 @@ if (typeof console !== 'undefined') {
   };
 }
 
+export const LOCAL_MODEL_CONFIGS = {
+  'Xenova/opus-mt-en-uk': {
+    name: 'OPUS-MT (Легка ~105 МБ)',
+    estimatedBytes: 111_000_000,
+    isMarian: true
+  },
+  'Xenova/nllb-200-distilled-600M': {
+    name: 'NLLB-200 (Повна ~874 МБ)',
+    estimatedBytes: 916_800_000,
+    isMarian: false
+  }
+};
+
 // Estimated size of Xenova/nllb-200-distilled-600M quantized weights & tokenizer (~874 MB)
 export const ESTIMATED_MODEL_BYTES = 916_800_000;
 
@@ -93,16 +106,32 @@ export function getNllbLanguageCode(lang) {
 }
 
 let translatorPipeline = null;
+let currentLoadedModelId = null;
 let isModelLoading = false;
 
 // Dynamically imports Transformers.js when requested
-export async function getPipeline(progressCallback) {
-  if (translatorPipeline) return translatorPipeline;
+export async function getPipeline(modelIdOrCallback, maybeCallback) {
+  let modelId = currentLoadedModelId || 'Xenova/opus-mt-en-uk';
+  let progressCallback = null;
+
+  if (typeof modelIdOrCallback === 'string') {
+    modelId = modelIdOrCallback;
+    progressCallback = maybeCallback;
+  } else if (typeof modelIdOrCallback === 'function') {
+    progressCallback = modelIdOrCallback;
+  }
+
+  if (translatorPipeline && currentLoadedModelId === modelId) {
+    return translatorPipeline;
+  }
+
   if (isModelLoading) {
     while (isModelLoading) {
       await new Promise(r => setTimeout(r, 200));
     }
-    return translatorPipeline;
+    if (translatorPipeline && currentLoadedModelId === modelId) {
+      return translatorPipeline;
+    }
   }
 
   isModelLoading = true;
@@ -140,11 +169,14 @@ export async function getPipeline(progressCallback) {
       }
     }
 
+    const config = LOCAL_MODEL_CONFIGS[modelId] || { estimatedBytes: 111_000_000 };
+    const estimatedTotal = config.estimatedBytes;
+
     // Smooth monotonic multi-file download progress tracking
     const fileLoaded = {};
     let lastPercent = 0;
 
-    translatorPipeline = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
+    translatorPipeline = await pipeline('translation', modelId, {
       device,
       progress_callback: (p) => {
         if (!p || !p.file || !progressCallback) return;
@@ -160,7 +192,7 @@ export async function getPipeline(progressCallback) {
           loadedBytes += bytes;
         }
 
-        const totalBytes = Math.max(ESTIMATED_MODEL_BYTES, loadedBytes);
+        const totalBytes = Math.max(estimatedTotal, loadedBytes);
         const percent = Math.min(99, Math.round((loadedBytes / totalBytes) * 100));
         lastPercent = Math.max(lastPercent, percent);
 
@@ -172,8 +204,10 @@ export async function getPipeline(progressCallback) {
       }
     });
 
+    currentLoadedModelId = modelId;
+
     if (progressCallback) {
-      const mb = (ESTIMATED_MODEL_BYTES / (1024 * 1024)).toFixed(0);
+      const mb = (estimatedTotal / (1024 * 1024)).toFixed(0);
       progressCallback(100, 'Готово', mb, mb);
     }
 
@@ -188,12 +222,13 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     if (message.target !== 'offscreen') return false;
 
     if (message.type === 'CHECK_LOCAL_MODEL') {
-      sendResponse({ ok: true, data: { loaded: Boolean(translatorPipeline) } });
+      sendResponse({ ok: true, data: { loaded: Boolean(translatorPipeline), modelId: currentLoadedModelId } });
       return false;
     }
 
     if (message.type === 'LOAD_LOCAL_MODEL') {
-      getPipeline((percent, file, loadedMb, totalMb) => {
+      const targetModel = message.payload?.modelId || 'Xenova/opus-mt-en-uk';
+      getPipeline(targetModel, (percent, file, loadedMb, totalMb) => {
         chrome.runtime.sendMessage({
           type: 'LOCAL_MODEL_DOWNLOAD_PROGRESS',
           progress: percent,
@@ -202,7 +237,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
           totalMb: totalMb
         }).catch(() => {});
       })
-        .then(() => sendResponse({ ok: true, data: { success: true } }))
+        .then(() => sendResponse({ ok: true, data: { success: true, modelId: targetModel } }))
         .catch(err => sendResponse({ ok: false, error: err.message }));
       return true;
     }
@@ -210,8 +245,10 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     if (message.type === 'TRANSLATE_LOCAL_BATCH') {
       (async () => {
         try {
-          const pipe = await getPipeline();
-          const { texts, targetLanguage, sourceLanguage } = message.payload || {};
+          const { texts, targetLanguage, sourceLanguage, modelId } = message.payload || {};
+          const targetModel = modelId || currentLoadedModelId || 'Xenova/opus-mt-en-uk';
+          const pipe = await getPipeline(targetModel);
+          const isOpus = targetModel.includes('opus');
           const tgtLangCode = getNllbLanguageCode(targetLanguage);
           const srcLangCode = sourceLanguage ? getNllbLanguageCode(sourceLanguage) : undefined;
 
@@ -222,9 +259,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
               continue;
             }
             try {
-              const opts = { tgt_lang: tgtLangCode, max_new_tokens: 256 };
-              if (srcLangCode && srcLangCode !== tgtLangCode) {
-                opts.src_lang = srcLangCode;
+              const opts = { max_new_tokens: 256 };
+              if (!isOpus) {
+                opts.tgt_lang = tgtLangCode;
+                if (srcLangCode && srcLangCode !== tgtLangCode) {
+                  opts.src_lang = srcLangCode;
+                }
               }
               const out = await pipe(text, opts);
               translations.push(normalizeNewlines(out[0]?.translation_text || text));

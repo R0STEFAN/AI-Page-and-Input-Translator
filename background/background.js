@@ -87,9 +87,15 @@ export function handleMessage(message, sender, sendResponse) {
         }
 
         case 'DOWNLOAD_LOCAL_MODEL': {
+          const settings = await getSettings();
+          const modelId = message.payload?.modelId || settings.localSelectedModel || 'Xenova/opus-mt-en-uk';
           await ensureOffscreenDocument();
-          const res = await sendToOffscreen({ target: 'offscreen', type: 'LOAD_LOCAL_MODEL' });
-          await saveSettings({ localModelLoaded: true });
+          const res = await sendToOffscreen({
+            target: 'offscreen',
+            type: 'LOAD_LOCAL_MODEL',
+            payload: { modelId }
+          });
+          await saveSettings({ localModelLoaded: true, localSelectedModel: modelId });
           sendResponse({ ok: true, data: res });
           break;
         }
@@ -103,7 +109,12 @@ export function handleMessage(message, sender, sendResponse) {
             const res = await sendToOffscreen({
               target: 'offscreen',
               type: 'TRANSLATE_LOCAL_BATCH',
-              payload: { texts, targetLanguage: targetLang, sourceLanguage }
+              payload: {
+                texts,
+                targetLanguage: targetLang,
+                sourceLanguage,
+                modelId: settings.localSelectedModel || 'Xenova/opus-mt-en-uk'
+              }
             });
             sendResponse({ ok: true, data: res });
           } else {
@@ -127,7 +138,12 @@ export function handleMessage(message, sender, sendResponse) {
             const res = await sendToOffscreen({
               target: 'offscreen',
               type: 'TRANSLATE_LOCAL_BATCH',
-              payload: { texts: [text], targetLanguage: targetLang, sourceLanguage }
+              payload: {
+                texts: [text],
+                targetLanguage: targetLang,
+                sourceLanguage,
+                modelId: settings.localSelectedModel || 'Xenova/opus-mt-en-uk'
+              }
             });
             sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
           } else {

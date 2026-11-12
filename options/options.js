@@ -26,11 +26,27 @@ export async function initOptions(
   const targetLanguageSelect = doc.getElementById('targetLanguage');
   const downloadModelBtn = doc.getElementById('downloadModelBtn');
   const modelStatusBadge = doc.getElementById('modelStatusBadge');
+  const localModelSelect = doc.getElementById('localModelSelect');
+  const localModelDesc = doc.getElementById('localModelDesc');
   const progressContainer = doc.getElementById('progressContainer');
   const progressBar = doc.getElementById('progressBar');
   const progressText = doc.getElementById('progressText');
   const saveBtn = doc.getElementById('saveBtn');
   const saveStatus = doc.getElementById('saveStatus');
+
+  const LOCAL_DESCRIPTIONS = {
+    'Xenova/opus-mt-en-uk': 'Оптимізована модель MarianMT: у 8 разів легша за NLLB (~105 МБ), працює швидко і майже не навантажує Core i5 та вбудовану графіку.',
+    'Xenova/nllb-200-distilled-600M': 'Повна мультимовна модель від Meta (~874 МБ, 200 мов). Вимагає більше оперативної пам\'яті та навантажує процесор.'
+  };
+
+  if (localModelSelect) {
+    localModelSelect.addEventListener('change', () => {
+      const val = localModelSelect.value;
+      if (localModelDesc) {
+        localModelDesc.textContent = LOCAL_DESCRIPTIONS[val] || '';
+      }
+    });
+  }
 
   const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection);
 
@@ -68,6 +84,13 @@ export async function initOptions(
           modelSelect.innerHTML = s.geminiAvailableModels.map(m =>
             `<option value="${m}" ${m === s.geminiModel ? 'selected' : ''}>${m}</option>`
           ).join('');
+        }
+
+        if (s.localSelectedModel && localModelSelect) {
+          localModelSelect.value = s.localSelectedModel;
+          if (localModelDesc) {
+            localModelDesc.textContent = LOCAL_DESCRIPTIONS[s.localSelectedModel] || '';
+          }
         }
 
         if (s.localModelLoaded) {
@@ -156,7 +179,11 @@ export async function initOptions(
       }
 
       try {
-        const res = await chromeApi.runtime.sendMessage({ type: 'DOWNLOAD_LOCAL_MODEL' });
+        const modelId = localModelSelect ? localModelSelect.value : 'Xenova/opus-mt-en-uk';
+        const res = await chromeApi.runtime.sendMessage({
+          type: 'DOWNLOAD_LOCAL_MODEL',
+          payload: { modelId }
+        });
         if (!res.ok) throw new Error(res.error);
 
         if (modelStatusBadge) {
@@ -186,11 +213,12 @@ export async function initOptions(
       const geminiApiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
       const geminiModel = modelSelect ? modelSelect.value : '';
       const targetLanguage = targetLanguageSelect ? targetLanguageSelect.value : 'Українська';
+      const localSelectedModel = localModelSelect ? localModelSelect.value : 'Xenova/opus-mt-en-uk';
 
       try {
         const res = await chromeApi.runtime.sendMessage({
           type: 'SAVE_SETTINGS',
-          payload: { activeEngine, geminiApiKey, geminiModel, targetLanguage }
+          payload: { activeEngine, geminiApiKey, geminiModel, targetLanguage, localSelectedModel }
         });
 
         if (res?.ok) {
@@ -226,6 +254,8 @@ export async function initOptions(
     targetLanguageSelect,
     downloadModelBtn,
     modelStatusBadge,
+    localModelSelect,
+    localModelDesc,
     progressContainer,
     progressBar,
     progressText,

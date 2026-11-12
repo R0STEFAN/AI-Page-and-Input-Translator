@@ -164,3 +164,11 @@ test('download progress simulation is strictly monotonic and does not jump backw
   assert.ok(p5 >= p4);
   assert.equal(p5, 99);
 });
+
+test('LOCAL_MODEL_CONFIGS contains both OPUS-MT and NLLB-200 with appropriate sizes', async () => {
+  const { LOCAL_MODEL_CONFIGS } = await import('../offscreen/offscreen.js');
+  assert.ok(LOCAL_MODEL_CONFIGS['Xenova/opus-mt-en-uk'], 'Must contain OPUS-MT model');
+  assert.ok(LOCAL_MODEL_CONFIGS['Xenova/nllb-200-distilled-600M'], 'Must contain NLLB model');
+  assert.ok(LOCAL_MODEL_CONFIGS['Xenova/opus-mt-en-uk'].estimatedBytes < 150_000_000, 'OPUS-MT should be ~105MB');
+  assert.ok(LOCAL_MODEL_CONFIGS['Xenova/nllb-200-distilled-600M'].estimatedBytes > 800_000_000, 'NLLB should be ~874MB');
+});

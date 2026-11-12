@@ -157,6 +157,8 @@ function createMockOptionsDoc() {
   makeEl('targetLanguage', 'select', { value: 'Українська' });
   makeEl('downloadModelBtn', 'button');
   makeEl('modelStatusBadge', 'span');
+  makeEl('localModelSelect', 'select', { value: 'Xenova/opus-mt-en-uk' });
+  makeEl('localModelDesc', 'p');
   makeEl('progressContainer', 'div', { classes: ['hidden'] });
   makeEl('progressBar', 'div');
   makeEl('progressText', 'span');
@@ -293,4 +295,37 @@ test('initOptions alerts if apiKey is empty when fetching models', async () => {
 
   assert.equal(alerts.length, 1);
   assert.ok(alerts[0].includes('API ключ'));
+});
+
+test('initOptions handles localModelSelect and updates descriptions', async () => {
+  const doc = createMockOptionsDoc();
+  const mockChrome = {
+    runtime: {
+      sendMessage: async (msg) => {
+        if (msg.type === 'GET_SETTINGS') {
+          return {
+            ok: true,
+            data: {
+              activeEngine: 'local',
+              localSelectedModel: 'Xenova/opus-mt-en-uk',
+              localModelLoaded: false
+            }
+          };
+        }
+        if (msg.type === 'SAVE_SETTINGS') {
+          return { ok: true, data: msg.payload };
+        }
+        return { ok: true, data: {} };
+      }
+    }
+  };
+
+  await initOptions(doc, mockChrome, () => {});
+  assert.equal(doc.getElementById('localModelSelect').value, 'Xenova/opus-mt-en-uk');
+  assert.ok(doc.getElementById('localModelDesc').textContent.includes('MarianMT'));
+
+  // Switch to NLLB
+  doc.getElementById('localModelSelect').value = 'Xenova/nllb-200-distilled-600M';
+  await doc.getElementById('localModelSelect').dispatchEvent('change');
+  assert.ok(doc.getElementById('localModelDesc').textContent.includes('Meta'));
 });
