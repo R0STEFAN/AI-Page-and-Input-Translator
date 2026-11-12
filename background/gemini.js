@@ -4,11 +4,18 @@ export function filterAndSortModels(apiData) {
   const models = apiData.models
     .filter(m => {
       const methods = m.supportedGenerationMethods || [];
-      return m?.name && methods.includes('generateContent') && !m.name?.includes('embedding');
+      const name = m?.name || '';
+      return name && methods.includes('generateContent')
+        && !name.includes('embedding')
+        && !name.includes('tts')
+        && !name.includes('image');
     })
     .map(m => m.name.replace(/^models\//, ''));
 
   return models.sort((a, b) => {
+    // gemini-2.5-flash is the fastest and most stable general translation model
+    if (a === 'gemini-2.5-flash') return -1;
+    if (b === 'gemini-2.5-flash') return 1;
     const aFlash = a.includes('flash');
     const bFlash = b.includes('flash');
     if (aFlash && !bFlash) return -1;
@@ -42,6 +49,9 @@ export function buildBatchTranslationPayload(texts, targetLanguage) {
     generationConfig: {
       temperature: 0.2,
       responseMimeType: 'application/json',
+      thinkingConfig: {
+        thinkingBudget: 0
+      },
       responseSchema: {
         type: 'OBJECT',
         properties: {
@@ -154,6 +164,9 @@ ${JSON.stringify(text)}`
     generationConfig: {
       temperature: 0.35,
       responseMimeType: 'application/json',
+      thinkingConfig: {
+        thinkingBudget: 0
+      },
       responseSchema: {
         type: 'OBJECT',
         properties: {

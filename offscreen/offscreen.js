@@ -259,7 +259,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
               continue;
             }
             try {
-              const opts = { max_new_tokens: 256 };
+              // Faster inference parameters: greedy decoding (num_beams: 1) and tight length cap
+              const opts = {
+                max_new_tokens: 160,
+                num_beams: 1,
+                do_sample: false
+              };
               if (!isOpus) {
                 opts.tgt_lang = tgtLangCode;
                 if (srcLangCode && srcLangCode !== tgtLangCode) {
