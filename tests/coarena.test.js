@@ -44,6 +44,12 @@ test('filterAndSortCoarenaModels prioritizes haiku, sonnet, minimax flash', () =
 });
 
 test('parseCoarenaResponse handles markdown fences and extracts translations', () => {
+  const batchPayload = buildCoarenaBatchPayload(['Hello', 'World'], 'Українська', 'claude-haiku-5-5');
+  assert.deepEqual(batchPayload.reasoning, { enabled: false });
+
+  const inputPayload = buildCoarenaInputPayload('Draft text', 'English', 'minimax-m3-1-flash');
+  assert.deepEqual(inputPayload.reasoning, { enabled: false });
+
   const fenced = {
     choices: [
       {

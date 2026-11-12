@@ -99,6 +99,7 @@ export function buildCoarenaBatchPayload(texts, targetLanguage, model = 'claude-
   return {
     model: model || 'claude-haiku-5-5',
     temperature: 0.2,
+    reasoning: { enabled: false },
     messages: [
       {
         role: 'user',
@@ -112,6 +113,7 @@ export function buildCoarenaInputPayload(text, targetLanguage, model = 'claude-h
   return {
     model: model || 'claude-haiku-5-5',
     temperature: 0.35,
+    reasoning: { enabled: false },
     messages: [
       {
         role: 'user',
@@ -167,6 +169,21 @@ async function callCoarenaChat(payload, apiKey) {
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
     const rawMsg = errData?.error?.message || errData?.message || '';
+
+    if (res.status === 400 && String(rawMsg).includes('Reasoning') && payload?.reasoning) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.reasoning;
+      const retryRes = await fetch(COARENA_CHAT_URL, {
+        method: 'POST',
+        headers: getCoarenaHeaders(apiKey),
+        body: JSON.stringify(fallbackPayload)
+      });
+      if (retryRes.ok) return retryRes.json();
+      const retryErr = await retryRes.json().catch(() => ({}));
+      const retryMsg = retryErr?.error?.message || retryErr?.message || '';
+      throw new Error(retryMsg || `Помилка перекладу Coarena (${retryRes.status})`);
+    }
+
     throw new Error(rawMsg || `Помилка перекладу Coarena (${res.status})`);
   }
 
