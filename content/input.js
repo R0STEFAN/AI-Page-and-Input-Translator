@@ -45,18 +45,82 @@ export function getEditableTarget(el) {
   return null;
 }
 
+function getDeepActiveElement(doc) {
+  let active = doc?.activeElement || null;
+  const seen = new Set();
+  while (active && !seen.has(active)) {
+    seen.add(active);
+    if (active.shadowRoot?.activeElement) {
+      active = active.shadowRoot.activeElement;
+      continue;
+    }
+    break;
+  }
+  return active;
+}
+
+function isElementVisible(el) {
+  if (!el || el.disabled || el.readOnly) return false;
+  if (el.getAttribute?.('aria-hidden') === 'true') return false;
+  if (typeof el.getBoundingClientRect === 'function') {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+  }
+  return true;
+}
+
+function collectEditables(root, results = [], visited = new Set()) {
+  if (!root || visited.has(root)) return results;
+  visited.add(root);
+
+  if (typeof root.querySelectorAll === 'function') {
+    const candidates = root.querySelectorAll('textarea, input, [contenteditable], [role="textbox"]');
+    for (const node of candidates) {
+      const editable = getEditableTarget(node);
+      if (editable && !results.includes(editable)) {
+        results.push(editable);
+      }
+    }
+    const allNodes = root.querySelectorAll('*');
+    for (const node of allNodes) {
+      if (node.shadowRoot) {
+        collectEditables(node.shadowRoot, results, visited);
+      }
+    }
+  }
+  return results;
+}
+
+function findVisibleNonEmptyEditable(doc) {
+  const candidates = collectEditables(doc);
+  let best = null;
+  for (const el of candidates) {
+    if (!isElementVisible(el)) continue;
+    const text = readEditableText(el).trim();
+    if (!text) continue;
+    const tag = (el.tagName || '').toUpperCase();
+    // Prefer multi-line editors / textareas / contenteditable over single-line search inputs
+    if (tag !== 'INPUT') return el;
+    if (!best) best = el;
+  }
+  return best;
+}
+
 export function initInputTracker(doc = typeof document !== 'undefined' ? document : null) {
   const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
   if (!currentDoc?.addEventListener) return;
 
   const track = (e) => {
-    const editable = getEditableTarget(e?.target);
+    const rawTarget = typeof e?.composedPath === 'function' ? (e.composedPath()[0] || e?.target) : e?.target;
+    const editable = getEditableTarget(rawTarget);
     if (editable) {
       lastFocusedEditable = editable;
     }
   };
 
   currentDoc.addEventListener('focusin', track, true);
+  currentDoc.addEventListener('input', track, true);
+  currentDoc.addEventListener('keyup', track, true);
   currentDoc.addEventListener('mousedown', track, true);
 }
 
@@ -68,14 +132,22 @@ export function findActiveEditableElement(doc = typeof document !== 'undefined' 
   const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
   if (!currentDoc) return null;
 
-  const active = getEditableTarget(currentDoc.activeElement);
+  const deepActive = getDeepActiveElement(currentDoc);
+  const active = getEditableTarget(deepActive);
   if (active) return active;
+
+  // If focus stopped on a shadow host (e.g. <shreddit-composer>), inspect inside its shadowRoot
+  if (deepActive?.shadowRoot) {
+    const shadowCandidate = findVisibleNonEmptyEditable(deepActive.shadowRoot)
+      || collectEditables(deepActive.shadowRoot).find(isElementVisible);
+    if (shadowCandidate) return shadowCandidate;
+  }
 
   if (lastFocusedEditable && lastFocusedEditable.isConnected !== false) {
     return lastFocusedEditable;
   }
 
-  return null;
+  return findVisibleNonEmptyEditable(currentDoc);
 }
 
 export function readEditableText(el) {
@@ -105,11 +177,26 @@ export function writeEditableText(
   const EventCtor = currentWin?.Event || (typeof Event !== 'undefined' ? Event : null);
   const InputEventCtor = currentWin?.InputEvent || EventCtor;
 
+  if (typeof el.focus === 'function') {
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      el.focus();
+    }
+  }
+
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     let execOk = false;
-    if (typeof currentDoc?.execCommand === 'function' && typeof el.setSelectionRange === 'function') {
+    const len = (el.value || '').length;
+    if (typeof el.select === 'function') {
+      try { el.select(); } catch {}
+    }
+    if (typeof el.setSelectionRange === 'function') {
+      try { el.setSelectionRange(0, len); } catch {}
+    }
+    if (typeof currentDoc?.execCommand === 'function') {
       try {
-        el.setSelectionRange(0, (el.value || '').length);
+        currentDoc.execCommand('selectAll', false, null);
         execOk = Boolean(currentDoc.execCommand('insertText', false, translatedText));
       } catch {
         execOk = false;
@@ -127,10 +214,17 @@ export function writeEditableText(
         el.value = translatedText;
       }
 
-      if (typeof el.dispatchEvent === 'function' && InputEventCtor) {
-        try {
-          el.dispatchEvent(new InputEventCtor('input', { bubbles: true, inputType: 'insertReplacementText', data: translatedText }));
-        } catch {
+      if (typeof el.dispatchEvent === 'function') {
+        if (InputEventCtor) {
+          try {
+            el.dispatchEvent(new InputEventCtor('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: translatedText }));
+          } catch {}
+          try {
+            el.dispatchEvent(new InputEventCtor('input', { bubbles: true, inputType: 'insertReplacementText', data: translatedText }));
+          } catch {
+            if (EventCtor) el.dispatchEvent(new EventCtor('input', { bubbles: true }));
+          }
+        } else if (EventCtor) {
           el.dispatchEvent(new EventCtor('input', { bubbles: true }));
         }
         if (EventCtor) {
@@ -141,36 +235,80 @@ export function writeEditableText(
     return true;
   }
 
-  // Rich-text / contenteditable
+  // Rich-text / contenteditable: select all automatically before replacing
+  const selectAllContentEditable = () => {
+    const rootNode = typeof el.getRootNode === 'function' ? el.getRootNode() : null;
+    const sel = (typeof rootNode?.getSelection === 'function' ? rootNode.getSelection() : null)
+      || (typeof currentWin?.getSelection === 'function' ? currentWin.getSelection() : null);
+
+    if (sel?.removeAllRanges && sel?.addRange && typeof currentDoc?.createRange === 'function') {
+      try {
+        const range = currentDoc.createRange();
+        if (typeof range.selectNodeContents === 'function') {
+          range.selectNodeContents(el);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } catch {}
+    }
+
+    if (typeof currentDoc?.execCommand === 'function') {
+      try {
+        currentDoc.execCommand('selectAll', false, null);
+      } catch {}
+    }
+  };
+
   let execOk = false;
-  if (currentWin?.getSelection && currentDoc?.createRange && typeof currentDoc?.execCommand === 'function') {
+  selectAllContentEditable();
+  if (typeof currentDoc?.execCommand === 'function') {
     try {
-      const sel = currentWin.getSelection();
-      const range = currentDoc.createRange();
-      if (range.selectNodeContents && sel?.removeAllRanges && sel?.addRange) {
-        range.selectNodeContents(el);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        execOk = Boolean(currentDoc.execCommand('insertText', false, translatedText));
-      }
+      execOk = Boolean(currentDoc.execCommand('insertText', false, translatedText));
     } catch {
       execOk = false;
     }
   }
 
-  const currentVal = (el.innerText !== undefined ? el.innerText : el.textContent) || '';
+  let currentVal = (el.innerText !== undefined ? el.innerText : el.textContent) || '';
   if (!execOk || currentVal.trim() !== translatedText.trim()) {
+    const ClipboardEventCtor = currentWin?.ClipboardEvent || (typeof ClipboardEvent !== 'undefined' ? ClipboardEvent : null);
+    const DataTransferCtor = currentWin?.DataTransfer || (typeof DataTransfer !== 'undefined' ? DataTransfer : null);
+
+    if (ClipboardEventCtor && DataTransferCtor && typeof el.dispatchEvent === 'function') {
+      try {
+        selectAllContentEditable();
+        const dt = new DataTransferCtor();
+        dt.setData('text/plain', translatedText);
+        const pasteEvent = new ClipboardEventCtor('paste', {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dt,
+        });
+        el.dispatchEvent(pasteEvent);
+      } catch {}
+    }
+  }
+
+  currentVal = (el.innerText !== undefined ? el.innerText : el.textContent) || '';
+  if (currentVal.trim() !== translatedText.trim()) {
     if (el.innerText !== undefined) {
       el.innerText = translatedText;
     } else {
       el.textContent = translatedText;
     }
 
-    if (typeof el.dispatchEvent === 'function' && InputEventCtor) {
-      try {
-        el.dispatchEvent(new InputEventCtor('input', { bubbles: true }));
-      } catch {
-        if (EventCtor) el.dispatchEvent(new EventCtor('input', { bubbles: true }));
+    if (typeof el.dispatchEvent === 'function') {
+      if (InputEventCtor) {
+        try {
+          el.dispatchEvent(new InputEventCtor('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: translatedText }));
+        } catch {}
+        try {
+          el.dispatchEvent(new InputEventCtor('input', { bubbles: true, inputType: 'insertReplacementText', data: translatedText }));
+        } catch {
+          if (EventCtor) el.dispatchEvent(new EventCtor('input', { bubbles: true }));
+        }
+      } else if (EventCtor) {
+        el.dispatchEvent(new EventCtor('input', { bubbles: true }));
       }
     }
   }

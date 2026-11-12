@@ -456,3 +456,127 @@ test('popup translateInputBtn shows inputTargetLanguage, triggers TRANSLATE_ACTI
     globalThis.window = originalWindow;
   }
 });
+
+test('findActiveEditableElement and initInputTracker pierce Shadow DOM hosts via shadowRoot and composedPath', () => {
+  resetLastFocusedEditable();
+  const doc = new MockDoc();
+  const innerEditor = new MockEditableElement('div', {
+    isContentEditable: true,
+    innerText: 'Привіт з Reddit'
+  });
+  const shadowHost = new MockEditableElement('shreddit-composer');
+  shadowHost.shadowRoot = { activeElement: innerEditor };
+
+  doc.activeElement = shadowHost;
+  assert.equal(findActiveEditableElement(doc), innerEditor);
+
+  // Also test composedPath() tracking when activeElement later blurs to null
+  resetLastFocusedEditable();
+  doc.activeElement = null;
+  initInputTracker(doc);
+  doc.trigger('input', {
+    target: shadowHost,
+    composedPath: () => [innerEditor, shadowHost, doc]
+  });
+  assert.equal(findActiveEditableElement(doc), innerEditor);
+});
+
+test('writeEditableText auto-selects unselected text in textarea and contenteditable (including paste fallback)', () => {
+  // 1) Textarea auto-selection via select() / setSelectionRange() + execCommand('selectAll', 'insertText')
+  const doc1 = new MockDoc();
+  const execCalls1 = [];
+  let selectedRange = null;
+  doc1.execCommand = (cmd, _ui, val) => {
+    execCalls1.push({ cmd, val });
+    if (cmd === 'insertText' && selectedRange) {
+      textarea.value = val;
+      return true;
+    }
+    return cmd === 'selectAll';
+  };
+
+  const textarea = new MockEditableElement('textarea', { value: 'Невиділений текст' });
+  textarea.setSelectionRange = (start, end) => {
+    selectedRange = [start, end];
+  };
+
+  writeEditableText(textarea, 'Unselected text', doc1, {});
+  assert.deepEqual(selectedRange, [0, 'Невиділений текст'.length]);
+  assert.equal(execCalls1[0].cmd, 'selectAll');
+  assert.equal(execCalls1[1].cmd, 'insertText');
+  assert.equal(textarea.value, 'Unselected text');
+
+  // 2) Contenteditable auto-selection + ClipboardEvent('paste') fallback when execCommand fails
+  const doc2 = new MockDoc();
+  const execCalls2 = [];
+  doc2.execCommand = (cmd, _ui, val) => {
+    execCalls2.push({ cmd, val });
+    return false;
+  };
+  doc2.createRange = () => ({ selectNodeContents: () => {} });
+
+  const editor = new MockEditableElement('div', {
+    isContentEditable: true,
+    innerText: 'Початковий текст без виділення'
+  });
+
+  class FakeDataTransfer {
+    constructor() { this.data = new Map(); }
+    setData(type, val) { this.data.set(type, val); }
+    getData(type) { return this.data.get(type) || ''; }
+  }
+  class FakeClipboardEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.clipboardData = init.clipboardData;
+    }
+  }
+  const origDispatch = editor.dispatchEvent.bind(editor);
+  editor.dispatchEvent = (ev) => {
+    origDispatch(ev);
+    if (ev.type === 'paste') {
+      editor.innerText = ev.clipboardData.getData('text/plain');
+    }
+  };
+
+  const win2 = {
+    getSelection: () => ({ removeAllRanges: () => {}, addRange: () => {} }),
+    ClipboardEvent: FakeClipboardEvent,
+    DataTransfer: FakeDataTransfer
+  };
+
+  writeEditableText(editor, 'Translated pasted text', doc2, win2);
+  assert.ok(execCalls2.some(c => c.cmd === 'selectAll'));
+  assert.equal(editor.innerText, 'Translated pasted text');
+  assert.ok(editor.dispatchedEvents.some(e => e.type === 'paste'));
+});
+
+test('findActiveEditableElement falls back to visible non-empty editable when activeElement is null', () => {
+  resetLastFocusedEditable();
+  const doc = new MockDoc();
+  doc.activeElement = null;
+
+  const emptySearch = new MockEditableElement('input', { value: '' });
+  emptySearch.getBoundingClientRect = () => ({ width: 200, height: 32 });
+
+  const hiddenTextarea = new MockEditableElement('textarea', { value: 'Hidden text' });
+  hiddenTextarea.getBoundingClientRect = () => ({ width: 0, height: 0 });
+
+  const visibleEditor = new MockEditableElement('div', {
+    isContentEditable: true,
+    innerText: 'Мій коментар для перекладу'
+  });
+  visibleEditor.getBoundingClientRect = () => ({ width: 400, height: 120 });
+
+  const shadowHost = new MockEditableElement('custom-composer');
+  shadowHost.shadowRoot = {
+    querySelectorAll: (sel) => (sel.includes('textarea') ? [visibleEditor] : [])
+  };
+
+  doc.querySelectorAll = (sel) => {
+    if (sel === '*') return [shadowHost];
+    return [emptySearch, hiddenTextarea];
+  };
+
+  assert.equal(findActiveEditableElement(doc), visibleEditor);
+});
