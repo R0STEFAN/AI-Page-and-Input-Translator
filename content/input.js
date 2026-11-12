@@ -408,7 +408,7 @@ function showInputThinkingOverlay(el, doc, win) {
     const timer = typeof setTimeout === 'function' ? setTimeout : (fn) => fn();
     timer(() => {
       if (overlay.remove) overlay.remove();
-    }, 60);
+    }, 300);
   };
 }
 

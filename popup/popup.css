@@ -56,7 +56,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   border: none;
-  transition: background-color 0.02s linear, color 0.02s linear, opacity 0.02s linear;
+  transition: all 0.2s;
 }
 .btn-primary { background: #2563eb; color: #fff; }
 .btn-primary:hover { background: #1d4ed8; }
@@ -77,5 +77,5 @@ body {
 .btn-restore:hover { background: #374151; }
 .progress-box { margin-top: 12px; }
 .progress-bar-bg { width: 100%; height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: #2563eb; transition: width 0.03s linear; }
+.progress-bar-fill { height: 100%; background: #2563eb; transition: width 0.2s; }
 .progress-label { font-size: 11px; color: #6b7280; text-align: center; margin-top: 4px; }
