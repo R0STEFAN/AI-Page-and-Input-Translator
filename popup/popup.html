@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Translate</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="brand">
+        <img src="../icons/icon32.png" alt="Icon">
+        <h2>AI Translator</h2>
+      </div>
+      <button type="button" id="openSettingsBtn" class="icon-btn" title="Налаштування">⚙️</button>
+    </header>
+
+    <div class="info-badges">
+      <span id="engineBadge" class="info-pill">🌐 Gemini</span>
+      <span id="langBadge" class="info-pill">🇺🇦 Українська</span>
+    </div>
+
+    <div id="alertBox" class="alert-box hidden"></div>
+
+    <div class="main-action">
+      <button type="button" id="toggleTranslateBtn" class="btn btn-primary">
+        🌐 Перекласти сторінку
+      </button>
+    </div>
+
+    <div id="progressBox" class="progress-box hidden">
+      <div class="progress-bar-bg">
+        <div id="progressBar" class="progress-bar-fill" style="width: 0%;"></div>
+      </div>
+      <div id="progressLabel" class="progress-label">0 / 0</div>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
