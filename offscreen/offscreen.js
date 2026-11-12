@@ -2,20 +2,26 @@
 export const NLLB_LANG_MAP = {
   'uk': 'ukr_Cyrl',
   'українська': 'ukr_Cyrl',
+  'ukrainian': 'ukr_Cyrl',
   'ukr_cyrl': 'ukr_Cyrl',
   'en': 'eng_Latn',
   'english': 'eng_Latn',
   'eng_latn': 'eng_Latn',
   'pl': 'pol_Latn',
   'polski': 'pol_Latn',
+  'polish': 'pol_Latn',
   'de': 'deu_Latn',
   'deutsch': 'deu_Latn',
+  'german': 'deu_Latn',
   'fr': 'fra_Latn',
   'français': 'fra_Latn',
+  'french': 'fra_Latn',
   'es': 'spa_Latn',
   'español': 'spa_Latn',
+  'spanish': 'spa_Latn',
   'it': 'ita_Latn',
-  'italiano': 'ita_Latn'
+  'italiano': 'ita_Latn',
+  'italian': 'ita_Latn'
 };
 
 export function getNllbLanguageCode(lang) {

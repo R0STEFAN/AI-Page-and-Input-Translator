@@ -6,13 +6,19 @@ import { ensureOffscreenDocument, sendToOffscreen } from '../background/offscree
 test('getNllbLanguageCode maps common language names to NLLB BCP-47 codes', () => {
   assert.equal(getNllbLanguageCode('Українська'), 'ukr_Cyrl');
   assert.equal(getNllbLanguageCode('uk'), 'ukr_Cyrl');
+  assert.equal(getNllbLanguageCode('Ukrainian'), 'ukr_Cyrl');
   assert.equal(getNllbLanguageCode('English'), 'eng_Latn');
   assert.equal(getNllbLanguageCode('en'), 'eng_Latn');
   assert.equal(getNllbLanguageCode('Polski'), 'pol_Latn');
+  assert.equal(getNllbLanguageCode('Polish'), 'pol_Latn');
   assert.equal(getNllbLanguageCode('Deutsch'), 'deu_Latn');
+  assert.equal(getNllbLanguageCode('German'), 'deu_Latn');
   assert.equal(getNllbLanguageCode('Français'), 'fra_Latn');
+  assert.equal(getNllbLanguageCode('French'), 'fra_Latn');
   assert.equal(getNllbLanguageCode('Español'), 'spa_Latn');
+  assert.equal(getNllbLanguageCode('Spanish'), 'spa_Latn');
   assert.equal(getNllbLanguageCode('Italiano'), 'ita_Latn');
+  assert.equal(getNllbLanguageCode('Italian'), 'ita_Latn');
 });
 
 test('getNllbLanguageCode falls back gracefully for unknown or empty languages', () => {
@@ -39,6 +45,7 @@ test('ensureOffscreenDocument and sendToOffscreen behave correctly with mocked c
         return mockContexts;
       },
       sendMessage: (message, callback) => {
+        assert.equal(message.target, 'offscreen');
         if (message.type === 'FAIL_TEST') {
           callback({ ok: false, error: 'Custom error' });
         } else {
