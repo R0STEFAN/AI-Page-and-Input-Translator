@@ -123,9 +123,28 @@ export function parseOpenRouterResponse(responseJson, expectedCount) {
   throw new Error('Не вдалося розібрати JSON перекладу від OpenRouter API');
 }
 
+// Models that mandate reasoning and reject reasoning: { enabled: false }
+const REASONING_MANDATORY_MODELS = new Set([
+  'baidu/ernie-5.5-flash-preview:free',
+  'liquid/lfm-2.5-2.6b:free',
+  'liquid/lfm-3-1.7b:free',
+  'recursive/flint-v1.0:free'
+]);
+
+function attachReasoningConfig(payload, model) {
+  if (!model) return payload;
+  if (REASONING_MANDATORY_MODELS.has(model)) {
+    // Leave reasoning config unset so provider does not throw 400
+    return payload;
+  }
+  // For openrouter/free, nemotron, dots, etc., disable reasoning tokens to make responses instant (300-600ms)
+  payload.reasoning = { enabled: false };
+  return payload;
+}
+
 export function buildOpenRouterBatchPayload(texts, targetLanguage, model = 'openrouter/free') {
   const items = texts.map((text, id) => ({ id, text }));
-  return {
+  const payload = {
     model: model || 'openrouter/free',
     temperature: 0.2,
     messages: [
@@ -135,10 +154,11 @@ export function buildOpenRouterBatchPayload(texts, targetLanguage, model = 'open
       }
     ]
   };
+  return attachReasoningConfig(payload, model);
 }
 
 export function buildOpenRouterInputPayload(text, targetLanguage, model = 'openrouter/free') {
-  return {
+  const payload = {
     model: model || 'openrouter/free',
     temperature: 0.35,
     messages: [
@@ -148,6 +168,7 @@ export function buildOpenRouterInputPayload(text, targetLanguage, model = 'openr
       }
     ]
   };
+  return attachReasoningConfig(payload, model);
 }
 
 export async function fetchOpenRouterModels(apiKey) {
@@ -195,7 +216,10 @@ async function callOpenRouterChat(payload, apiKey) {
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `Помилка перекладу OpenRouter (${res.status})`);
+    const rawMsg = errData?.error?.message || errData?.message || '';
+    const upstream = errData?.error?.metadata?.raw || '';
+    const fullMsg = upstream ? `${rawMsg}: ${upstream}` : rawMsg;
+    throw new Error(fullMsg || `Помилка перекладу OpenRouter (${res.status})`);
   }
 
   return res.json();
