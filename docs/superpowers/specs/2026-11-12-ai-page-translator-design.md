@@ -2,19 +2,22 @@
 
 **Date:** 2026-11-12  
 **Target Platform:** Google Chrome (Manifest V3)  
-**AI Engine:** Google Gemini API (`generativelanguage.googleapis.com`)  
+**Dual Translation Engines:** 
+1. **Cloud AI:** Google Gemini API (`generativelanguage.googleapis.com`)
+2. **In-Browser Local AI (No server required):** WebGPU / WASM with `Transformers.js` + quantized `NLLB-200` (~300 MB cached in browser)
 **Repository:** `d:\ai page translate`
 
 ---
 
 ## 1. Overview & Problem Statement
 
-Users require an AI-powered browser translation extension that:
-1. Connects to Google Gemini API using a personal API key.
-2. Dynamically queries the API to fetch all active available models (e.g., `gemini-2.5-flash`, `gemini-1.5-flash`, `gemini-1.5-pro`) and enables the user to select their desired model and target translation language in an intuitive Options page.
-3. Automatically identifies the **main content** of any web page (article, blog post, or article list/feed) without translating distracting sidebars, headers, navigation menus, ads, or footers.
-4. Performs an **in-place DOM replacement** of the main content into the target language, preserving layout, CSS styling, links, and structure, with an instant single-click option to revert to the original text.
-5. Provides **selection translation via right-click context menu** (`✨ Перекласти виділене (AI)`), which translates only the selected text and replaces it directly in-place on the page.
+Users require a privacy-conscious, high-performance browser translation extension that:
+1. Supports **two translation modes**:
+   * **Cloud Mode (Google Gemini API):** User enters an API key, the extension dynamically fetches all active models (`gemini-2.5-flash`, `gemini-1.5-flash`, etc.), and user selects their preferred model and target language.
+   * **Built-in Local Mode (WebGPU / In-Browser Offline):** Zero external servers, zero background daemons. The user downloads a compact, specialized translation model (quantized `NLLB-200-distilled-600M` ~300 MB) directly into the browser cache during initial setup. All translations run 100% locally on the user's GPU (via WebGPU) or CPU (via multi-threaded WASM).
+2. Automatically identifies the **main content** of any web page (article, blog post, or article list/feed) without translating distracting sidebars, headers, navigation menus, ads, or footers.
+3. Performs an **in-place DOM replacement** of the main content into the target language, preserving layout, CSS styling, links, and structure, with an instant single-click option to revert to the original text.
+4. Provides **selection translation via right-click context menu** (`✨ Перекласти виділене (AI)`), translating only the selected text and replacing it directly in-place on the page.
 
 ---
 
@@ -26,42 +29,32 @@ Users require an AI-powered browser translation extension that:
 ├───────────────────────────────────┬────────────────────────────────────┤
 │           Options Page            │             Popup UI               │
 │     (options.html / .js)          │        (popup.html / .js)          │
-│ • Gemini API Key input            │ • Translate Main / Restore button  │
-│ • Fetch Models dynamically        │ • Status & Progress indicator      │
-│ • Select Model & Target Language  │ • Quick settings button            │
+│ • Engine switch: Gemini vs Local  │ • Translate Main / Restore button  │
+│ • Gemini: API Key & dynamic models│ • Status & Progress indicator      │
+│ • Local: Download model (progress)│ • Active Engine & Language badge   │
+│ • Target Language selection       │ • Quick settings button            │
 └─────────────────┬─────────────────┴──────────────────┬─────────────────┘
                   │                                    │
                   ▼                                    ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Background Service Worker (`background.js`)          │
-│ • chrome.contextMenus setup ("Перекласти виділене (AI)")               │
-│ • Gemini API Client:                                                   │
-│     - fetchModels(apiKey)                                              │
-│     - translateBatch(texts, targetLanguage, model, apiKey)             │
-│     - translateSingle(text, targetLanguage, model, apiKey)            │
+│ • chrome.contextMenus setup ("✨ Перекласти виділене (AI)")            │
+│ • Route translation requests according to selected active engine:      │
+│     ├─► [Engine: Gemini] ──► Gemini API REST Client (lib/gemini.js)    │
+│     └─► [Engine: Local]  ──► chrome.offscreen Document (WebGPU/WASM)   │
 │ • chrome.storage.sync management (fallback local)                      │
-│ • Message broker between Popup, Content Script, and Gemini API         │
-└─────────────────────────────────┬──────────────────────────────────────┘
-                                  │ chrome.tabs.sendMessage
-                                  ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                 Content Script Layer (`content/content.js`)            │
-│                                                                        │
-│  ┌───────────────────────┐         ┌────────────────────────────────┐  │
-│  │     detector.js       │         │           walker.js            │  │
-│  │ • Find <main>/<article>│         │ • Extract text-bearing leaf    │  │
-│  │ • Article feed scanner│ ──────> │   nodes (p, h1-h6, li, etc.)   │  │
-│  │ • Density-score fallback│       │ • Assign data-ai-trans-id      │  │
-│  └───────────────────────┘         │ • Cache data-ai-original-text  │  │
-│                                    └───────────────┬────────────────┘  │
-│                                                    │                   │
-│  ┌───────────────────────┐         ┌───────────────▼────────────────┐  │
-│  │     selection.js      │         │          replacer.js           │  │
-│  │ • Context menu action │         │ • Progressive batch streaming  │  │
-│  │ • window.getSelection │         │ • In-place DOM node update     │  │
-│  │ • In-place Range swap │         │ • Instant restore to original  │  │
-│  └───────────────────────┘         └────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────────────────┘
+│ • Offscreen lifecycle manager (spawns/manages offscreen document)      │
+└──────────────┬──────────────────────────────────────────┬──────────────┘
+               │                                          │
+               ▼                                          ▼
+┌──────────────────────────────────────┐   ┌─────────────────────────────┐
+│  Offscreen Worker Document           │   │ Content Script Layer        │
+│  (offscreen.html / offscreen.js)     │   │ (content/content.js)        │
+│ • Transformers.js runtime            │   │ • detector.js (Main Content)│
+│ • WebGPU / WASM execution            │   │ • walker.js (DOM TextNodes) │
+│ • Local NLLB-200 pipeline            │   │ • replacer.js (In-place)    │
+│ • One-click model downloader & cache │   │ • selection.js (Right-click)│
+└──────────────────────────────────────┘   └─────────────────────────────┘
 ```
 
 ---
@@ -72,13 +65,15 @@ Users require an AI-powered browser translation extension that:
 * **`manifest_version`**: `3`
 * **`name`**: `AI Page Translator`
 * **`version`**: `1.0.0`
-* **`description`**: `Розумний перекладач сторінок та виділеного тексту за допомогою Google Gemini AI.`
+* **`description`**: `Розумний перекладач сторінок та виділеного тексту за допомогою Google Gemini та вбудованої офлайн-нейромережі.`
 * **`permissions`**:
-  * `"storage"`: Persisting user settings (`apiKey`, `selectedModel`, `targetLanguage`).
+  * `"storage"`: Persisting user preferences (`activeEngine`, `geminiApiKey`, `geminiModel`, `targetLanguage`, `localModelInstalled`).
   * `"contextMenus"`: Registering the selection translation right-click menu item.
-  * `"activeTab"`: Communicating with the active page on user action.
+  * `"activeTab"`: Communicating with the active tab.
+  * `"offscreen"`: Required for hosting WebGPU and Transformers.js client-side inference in Manifest V3.
 * **`host_permissions`**:
-  * `"https://generativelanguage.googleapis.com/*"`: Direct HTTPS access to Gemini REST API endpoints from background service worker.
+  * `"https://generativelanguage.googleapis.com/*"`: Gemini API requests.
+  * `"https://huggingface.co/*"` and `"https://*.hf.co/*"`: One-time model asset download for in-browser local model.
 * **`background`**:
   * `"service_worker"`: `"background/background.js"`, `"type"`: `"module"`.
 * **`action`**:
@@ -92,130 +87,85 @@ Users require an AI-powered browser translation extension that:
 
 ---
 
-### 3.2. Settings & Gemini Integration (`options/` & `background/gemini.js`)
+### 3.2. Settings & Translation Engines
 
 #### Storage Schema (`chrome.storage.sync` with `local` fallback)
 ```json
 {
-  "apiKey": "AIzaSy...",
-  "selectedModel": "gemini-2.5-flash",
-  "targetLanguage": "Українська",
-  "availableModels": ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+  "activeEngine": "gemini", // "gemini" | "local"
+  "geminiApiKey": "AIzaSy...",
+  "geminiModel": "gemini-2.5-flash",
+  "geminiAvailableModels": ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"],
+  "targetLanguage": "uk", // "uk" | "en" | "pl" | "de" | "es" | "fr"
+  "localModelLoaded": false
 }
 ```
 
-#### API Endpoints & Request Contracts
-1. **Model Discovery:**
-   * **Endpoint:** `GET https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
-   * **Filter:** Select entries where `supportedGenerationMethods` includes `"generateContent"` and name does not contain embedding/vision-only keywords.
-   * **Sorting:** Prefer flash / fast models (`gemini-2.5-flash`, `gemini-1.5-flash`) at the top.
+#### Engine 1: Cloud Google Gemini (`background/gemini.js`)
+* **Dynamic Model Discovery:**
+  * `GET https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  * Filters models supporting `generateContent`. Flash models (`gemini-2.5-flash`, `gemini-1.5-flash`) are prioritized at the top of the select list.
+* **Batch Translation:**
+  * `POST https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+  * Uses structured JSON response (`responseMimeType: "application/json"`) with a schema returning `{"translations": ["...", "..."]}` for reliable index-matched text replacement.
 
-2. **Batch Translation:**
-   * **Endpoint:** `POST https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-   * **Headers:** `Content-Type: application/json`
-   * **Body:**
-     ```json
-     {
-       "contents": [
-         {
-           "role": "user",
-           "parts": [
-             {
-               "text": "Translate the following JSON array of strings into ${targetLanguage}. Maintain formatting, numbers, code tokens, and URLs accurately. Return strict JSON matching the schema.\n\nInput:\n${JSON.stringify(texts)}"
-             }
-           ]
-         }
-       ],
-       "generationConfig": {
-         "temperature": 0.2,
-         "responseMimeType": "application/json",
-         "responseSchema": {
-           "type": "OBJECT",
-           "properties": {
-             "translations": {
-               "type": "ARRAY",
-               "items": { "type": "STRING" }
-             }
-           },
-           "required": ["translations"]
-         }
-       }
-     }
-     ```
-   * **Response Handling:** Extracts `candidates[0].content.parts[0].text`, parses JSON, verifies `translations.length === texts.length`.
+#### Engine 2: In-Browser Local Model (Offscreen Document with Transformers.js & WebGPU)
+* **Zero External Dependencies:** No Python, no Ollama, no background processes.
+* **Model:** Quantized `Xenova/nllb-200-distilled-600M` (ONNX format, ~300 MB). Supports Ukrainian (`ukr_Cyrl`), English, and 200 other languages with state-of-the-art NMT quality.
+* **Storage & Download:**
+  * Download initiated via button in Options page.
+  * Offscreen document uses `transformers.pipeline('translation', 'Xenova/nllb-200-distilled-600M', { progress_callback: ... })`.
+  * Sends progress updates (`0%` -> `100%`) to the Options UI.
+  * Weights are automatically cached in browser `CacheStorage` / `IndexedDB` and loaded instantly on subsequent runs.
+* **Hardware Acceleration:**
+  * Checks for WebGPU support: `navigator.gpu`. If available, sets `device: 'webgpu'`, enabling blazing-fast hardware-accelerated translation.
+  * Fallback: WASM with SIMD for systems without WebGPU.
 
 ---
 
-### 3.3. Main Content Detection & DOM Handling (`content/`)
+### 3.3. Main Content Detection & In-Place DOM Replacement (`content/`)
 
 #### 1. Detection Heuristic (`detector.js`)
-* **Step 1 (Explicit Semantic Tags):**
-  * Check for `<main>`, `[role="main"]`, or `<article>`.
-  * If found and text length > 300 characters, designate as main container.
-* **Step 2 (Article Feeds / Blog Lists):**
-  * If the page contains multiple repeated items (e.g. `document.querySelectorAll('article, .post, .card, .feed-item')` with count >= 3), locate their lowest common ancestor container.
-* **Step 3 (Text Density Scoring Fallback):**
-  * Inspect top-level candidate containers (`div`, `section`).
-  * Exclude blacklist elements: `header`, `nav`, `footer`, `aside`, `.sidebar`, `.menu`, `.advertisement`, `.comments`, `form`, `script`, `style`.
-  * Score = `(textLength / Math.max(tagCount, 1)) * Math.sqrt(paragraphCount)`.
-  * The highest scoring element becomes the translation root.
+* **Step 1 (Semantic Container):** Check for `<main>`, `[role="main"]`, or `<article>`. If found and text length > 300 characters, use as root.
+* **Step 2 (Article Feeds / Blog Lists):** Locate repeating item containers (e.g. 3+ `<article>`, `.post`, `.card`, `.news-item` elements) and select their closest common ancestor.
+* **Step 3 (Density Scoring):** For unstructured layouts, scan top-level containers (`div`, `section`), exclude headers, footers, navs, sidebars, ads, and forms, and calculate `score = (textLength / Math.max(tagCount, 1)) * Math.sqrt(paragraphCount)`.
 
 #### 2. Text Extraction & In-Place Replacement (`walker.js` & `replacer.js`)
-* Walk only block elements (`p`, `h1`, `h2`, `h3`, `h4`, `h5`, `h6`, `li`, `blockquote`, `figcaption`, `dt`, `dd`).
-* Filter out empty or whitespace-only nodes and `pre`/`code` blocks.
-* Store original text: `el.dataset.aiOriginalText = el.innerText`.
-* Assign unique batch tracking ID: `el.dataset.aiTransId = id`.
-* Batching: Slice elements into batches of 15–20 elements (~2,500 characters).
-* Progressive rendering:
-  * For each batch, send to background service worker.
-  * On response, update each element's `textContent` inside `requestAnimationFrame`.
-  * Store translated state in `document.body.dataset.aiPageTranslated = "true"`.
-* Restore functionality:
-  * Query all elements with `[data-ai-original-text]`.
-  * Restore `el.textContent = el.dataset.aiOriginalText`.
-  * Remove `document.body.dataset.aiPageTranslated`.
+* Traverses block text elements (`p`, `h1`-`h6`, `li`, `blockquote`, `figcaption`).
+* Skips `pre`, `code`, and empty elements.
+* Caches original text: `el.dataset.aiOriginalText = el.innerText`.
+* Batches text into chunks of 15–20 elements (~2,500 characters) for progressive streaming.
+* In-place replacement updates DOM nodes inside `requestAnimationFrame` as each batch completes.
+* **Restore Original:** Single click in popup restores `el.textContent = el.dataset.aiOriginalText` for all elements instantly with zero network/GPU calls.
 
 ---
 
 ### 3.4. Selection Translation via Context Menu (`content/selection.js`)
 
-* **Context Menu Entry:** Created via `chrome.contextMenus.create` on install with `id: "ai-translate-selection"`, `title: "✨ Перекласти виділене (AI)"`, `contexts: ["selection"]`.
-* **Execution Flow:**
-  1. User selects text and clicks context menu item.
-  2. Background receives `chrome.contextMenus.onClicked` -> sends message `{ action: "TRANSLATE_SELECTION" }` to active tab.
-  3. `content/selection.js` captures `window.getSelection()`.
-  4. Selected text is extracted; a subtle highlight/pulse is applied to the selection range.
-  5. Content script requests translation from background for single text.
-  6. On response, `range.deleteContents()` is executed and replaced with a `<span class="ai-translated-selection" title="Клікніть, щоб повернути оригінал">${translation}</span>` element containing `dataset.originalText`.
-  7. Clicking on the translated selection span reverts it to original text.
+* **Context Menu Entry:** Created via `chrome.contextMenus.create` on extension install:
+  * `id: "ai-translate-selection"`, `title: "✨ Перекласти виділене (AI)"`, `contexts: ["selection"]`.
+* **Flow:**
+  1. User selects text on page -> right clicks -> selects `✨ Перекласти виділене (AI)`.
+  2. Background receives click event -> passes message to active tab content script.
+  3. `selection.js` gets `window.getSelection()`, applies temporary subtle pulse/highlight class.
+  4. Dispatches text translation to background (routes to active engine: Gemini or Local NLLB).
+  5. On completion: `range.deleteContents()`, inserts `<span class="ai-translated-selection" title="Клікніть, щоб повернути оригінал">${translatedText}</span>` containing `dataset.originalText`.
+  6. Clicking the translated span instantly restores the original text.
 
 ---
 
 ### 3.5. Popup UI (`popup/`)
 
-* **Status Header:** Displays current target language and active model.
-* **Action Buttons:**
-  * **"🌐 Перекласти сторінку"** (switches to **"↺ Повернути оригінал"** when page is already translated).
-  * **"⚙️ Налаштування"** (opens Options page).
-* **Progress Bar:** Shown during active translation: `Перекладено X / Y блоків...`
-* **Notice Banner:** Shown if API key is not configured, linking directly to Options.
+* **Header:** Displays active engine badge (`🌐 Gemini: gemini-2.5-flash` or `⚡ Офлайн (WebGPU)`) and target language (`🌐 Мова: Українська`).
+* **Primary Action:**
+  * **"🌐 Перекласти головний контент"** (toggles to **"↺ Повернути оригінал"** when translated).
+* **Progress Bar:** Real-time indicator during full-page translation (`Перекладено: 12 / 36 блоків`).
+* **Secondary Action:** **"⚙️ Налаштування"** opens Options tab.
+* **Setup Warning:** Prompts if Gemini API key is missing or if Local model is not yet downloaded.
 
 ---
 
-## 4. Error Handling & Edge Cases
-
-| Scenario | Handling Strategy |
-|----------|-------------------|
-| API Key missing | Options page & Popup show prominent warning; blocks translation requests with a clean prompt to configure the key. |
-| Invalid API Key / Quota Exceeded | Catches HTTP 400/403/429 from Gemini; surfaces localized error message ("Перевірте API ключ або ліміти Gemini"). |
-| No main content found | Falls back to visible `document.body` paragraphs while skipping navigation/header/footer elements. |
-| Translation count mismatch | If Gemini returns fewer/more items than requested, falls back to 1-to-1 matching up to available length. |
-| Dynamic/SPA navigation | Re-checks page state on user-initiated popup click. |
-| User reverts page | Instant restoration from `dataset.aiOriginalText` with zero network requests. |
-
----
-
-## 5. File Structure
+## 4. File Structure
 
 ```
 d:\ai page translate\
@@ -227,7 +177,13 @@ d:\ai page translate\
 │   └── icon128.png
 ├── background/
 │   ├── background.js
-│   └── gemini.js
+│   ├── gemini.js
+│   └── offscreen-manager.js
+├── offscreen/
+│   ├── offscreen.html
+│   ├── offscreen.js
+│   └── vendor/
+│       └── transformers.min.js
 ├── content/
 │   ├── content.js
 │   ├── detector.js
@@ -251,18 +207,15 @@ d:\ai page translate\
 
 ---
 
-## 6. Verification & Testing Strategy
+## 5. Verification & Testing Strategy
 
-1. **Options Page Verification:**
-   - Enter valid Gemini API key -> click "Отримати доступні моделі" -> verify models dropdown fills with `gemini-2.5-flash`, `gemini-1.5-flash`, etc.
-   - Select model & target language -> click Save -> verify persistence in `chrome.storage.sync`.
-2. **Main Content Translation:**
-   - Test on article site (e.g. Wikipedia article, TechCrunch/Medium blog post, BBC/CNN news article).
-   - Click "Перекласти сторінку" in popup -> verify main content replaces in-place while navigation, header, and footer stay in original language.
-   - Click "Повернути оригінал" -> verify exact original text is restored.
-3. **Article Feed / Blog List Translation:**
-   - Test on a blog or news feed page with multiple cards/articles.
-   - Verify all feed items are detected and translated in-place.
-4. **Selection Translation:**
-   - Select any paragraph or sentence -> right click -> choose "✨ Перекласти виділене (AI)" -> verify selected text is replaced in-place.
-   - Click replaced text -> verify original text reverts.
+1. **Options Engine Switch & Setup:**
+   * Test Cloud Engine: Input Gemini API key -> click "Отримати доступні моделі" -> verify dynamic list (`gemini-2.5-flash`, etc.).
+   * Test Local Engine: Switch to "Вбудована модель (Офлайн / WebGPU)" -> click "Завантажити модель (~300 МБ)" -> observe progress bar -> verify model persists in browser cache.
+2. **Main Content Page Translation:**
+   * Test with Gemini engine and test with Local engine on Wikipedia, blogs, and news feeds.
+   * Verify main content is accurately replaced in-place while headers, navigation, and sidebars remain untouched.
+   * Verify "Повернути оригінал" restores original text instantly.
+3. **Selection Context Menu Translation:**
+   * Highlight text -> right-click -> "✨ Перекласти виділене (AI)" -> verify in-place replacement.
+   * Click translated span -> verify revert to original text.
