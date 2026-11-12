@@ -20,6 +20,7 @@ export async function initPopup(
   const langBadge = doc.getElementById('langBadge');
   const alertBox = doc.getElementById('alertBox');
   const toggleBtn = doc.getElementById('toggleTranslateBtn');
+  const selectSectionBtn = doc.getElementById('selectSectionBtn');
   const openSettingsBtn = doc.getElementById('openSettingsBtn');
   const progressBox = doc.getElementById('progressBox');
   const progressBar = doc.getElementById('progressBar');
@@ -48,6 +49,7 @@ export async function initPopup(
       langBadge,
       alertBox,
       toggleBtn,
+      selectSectionBtn,
       openSettingsBtn,
       progressBox,
       progressBar,
@@ -83,6 +85,9 @@ export async function initPopup(
     if (toggleBtn) {
       toggleBtn.disabled = true;
     }
+    if (selectSectionBtn) {
+      selectSectionBtn.disabled = true;
+    }
   } else if (settings.activeEngine === 'local' && !settings.localModelLoaded) {
     if (alertBox) {
       alertBox.textContent = 'Завантажте офлайн модель у налаштуваннях';
@@ -90,6 +95,9 @@ export async function initPopup(
     }
     if (toggleBtn) {
       toggleBtn.disabled = true;
+    }
+    if (selectSectionBtn) {
+      selectSectionBtn.disabled = true;
     }
   }
 
@@ -159,11 +167,26 @@ export async function initPopup(
     });
   }
 
+  if (selectSectionBtn) {
+    selectSectionBtn.addEventListener('click', async () => {
+      try {
+        await chromeApi?.tabs?.sendMessage?.(tab.id, { action: 'START_SECTION_INSPECTOR' });
+      } catch (err) {
+        alertFn(`Не вдалося запустити вибір секції: ${err.message}`);
+        return;
+      }
+      if (typeof window !== 'undefined' && window.close) {
+        window.close();
+      }
+    });
+  }
+
   return {
     engineBadge,
     langBadge,
     alertBox,
     toggleBtn,
+    selectSectionBtn,
     openSettingsBtn,
     progressBox,
     progressBar,

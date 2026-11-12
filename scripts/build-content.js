@@ -24,6 +24,7 @@ export function buildContentBundle() {
     'walker.js',
     'replacer.js',
     'selection.js',
+    'inspector.js',
     'content.js'
   ];
 

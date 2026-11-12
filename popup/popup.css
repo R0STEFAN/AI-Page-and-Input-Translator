@@ -43,6 +43,11 @@ body {
   margin-bottom: 12px;
 }
 .hidden { display: none !important; }
+.main-action {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .btn {
   width: 100%;
   padding: 10px 14px;
@@ -55,6 +60,19 @@ body {
 }
 .btn-primary { background: #2563eb; color: #fff; }
 .btn-primary:hover { background: #1d4ed8; }
+.btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+.btn-secondary:hover {
+  background: #e5e7eb;
+  color: #111827;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .btn-restore { background: #4b5563; color: #fff; }
 .btn-restore:hover { background: #374151; }
 .progress-box { margin-top: 12px; }

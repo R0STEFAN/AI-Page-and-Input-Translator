@@ -154,7 +154,65 @@
       if (doc.body && doc.body.dataset) {
         delete doc.body.dataset.aiPageTranslated;
       }
+      const badges = doc.querySelectorAll('.ai-section-restore-badge');
+      if (badges && badges.forEach) {
+        badges.forEach(b => { if (b.remove) b.remove(); });
+      }
     });
+  }
+  
+  function attachSectionRestoreBadge(sectionElement, elements, doc = typeof document !== 'undefined' ? document : null) {
+    const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!sectionElement || !currentDoc?.createElement) return null;
+  
+    // Remove prior badge if any
+    const prior = sectionElement.querySelector ? sectionElement.querySelector('.ai-section-restore-badge') : null;
+    if (prior && prior.remove) prior.remove();
+  
+    if (sectionElement.style && (!sectionElement.style.position || sectionElement.style.position === 'static')) {
+      sectionElement.style.position = 'relative';
+    }
+  
+    const badge = currentDoc.createElement('button');
+    badge.className = 'ai-section-restore-badge';
+    badge.title = 'Повернути оригінал секції';
+    if (typeof badge.setAttribute === 'function') {
+      badge.setAttribute('type', 'button');
+      badge.setAttribute('aria-label', 'Повернути оригінал секції');
+    }
+  
+    badge.innerHTML = `
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+        <path d="M3 3v5h5"/>
+      </svg>
+      <span>Оригінал</span>
+    `;
+  
+    badge.addEventListener('click', (e) => {
+      if (e && typeof e.stopPropagation === 'function') {
+        e.stopPropagation();
+      }
+      (elements || []).forEach(el => {
+        if (el.dataset && (el.dataset.aiOriginalHtml !== undefined || el.dataset.aiOriginalText !== undefined)) {
+          const restored = el.dataset.aiOriginalHtml || el.dataset.aiOriginalText;
+          if (el.innerHTML !== undefined) {
+            el.innerHTML = restored;
+          } else {
+            el.innerText = restored;
+          }
+          if (el.classList && el.classList.remove) {
+            el.classList.remove('ai-translated-block');
+          }
+          delete el.dataset.aiOriginalHtml;
+          delete el.dataset.aiOriginalText;
+        }
+      });
+      if (badge.remove) badge.remove();
+    });
+  
+    sectionElement.appendChild(badge);
+    return badge;
   }
 
   // ==========================================
@@ -293,6 +351,152 @@
   }
 
   // ==========================================
+  // Module: inspector.js
+  // ==========================================
+  let activeInspector = null;
+  
+  function findSectionContainer(el, doc = typeof document !== 'undefined' ? document : null) {
+    const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
+    if (!el || !currentDoc || el === currentDoc.body || el === currentDoc.documentElement) return null;
+  
+    // Ignore extension elements
+    if (el.closest && el.closest('#ai-section-highlighter, .ai-section-restore-badge, .ai-restore-selection-btn')) {
+      return null;
+    }
+  
+    let curr = el;
+    let semanticCandidate = null;
+    let divCandidate = null;
+    let leafCandidate = null;
+  
+    while (curr && curr !== currentDoc.body && curr !== currentDoc.documentElement) {
+      const tag = curr.tagName?.toLowerCase();
+      const isSemantic = ['article', 'section', 'aside', 'main', 'blockquote', 'li', 'form'].includes(tag) ||
+        (curr.getAttribute && ['region', 'article', 'feed'].includes(curr.getAttribute('role')));
+  
+      const textLen = (curr.innerText || '').trim().length;
+  
+      if (isSemantic && textLen >= 15) {
+        semanticCandidate = curr;
+        break;
+      }
+  
+      if (tag === 'div' && textLen >= 25 && !divCandidate) {
+        divCandidate = curr;
+      }
+  
+      if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag) && !leafCandidate) {
+        leafCandidate = curr;
+      }
+  
+      curr = curr.parentElement;
+    }
+  
+    return semanticCandidate || divCandidate || leafCandidate || el;
+  }
+  
+  function startSectionInspector(
+    onSelectCallback,
+    doc = typeof document !== 'undefined' ? document : null,
+    win = typeof window !== 'undefined' ? window : null
+  ) {
+    const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
+    const currentWin = win || (typeof window !== 'undefined' ? window : null);
+    if (!currentDoc) return null;
+  
+    if (activeInspector) {
+      activeInspector.stop();
+    }
+  
+    let highlighter = currentDoc.getElementById('ai-section-highlighter');
+    if (!highlighter) {
+      highlighter = currentDoc.createElement('div');
+      highlighter.id = 'ai-section-highlighter';
+      highlighter.className = 'ai-section-highlighter';
+      const tooltip = currentDoc.createElement('span');
+      tooltip.className = 'ai-section-tooltip';
+      tooltip.textContent = '🎯 Клікніть, щоб перекласти секцію • Esc — скасувати';
+      highlighter.appendChild(tooltip);
+      if (currentDoc.body) {
+        currentDoc.body.appendChild(highlighter);
+      }
+    }
+  
+    let currentTarget = null;
+  
+    const onMouseMove = (e) => {
+      const el = currentDoc.elementFromPoint ? currentDoc.elementFromPoint(e.clientX, e.clientY) : e.target;
+      const container = findSectionContainer(el, currentDoc);
+      if (!container) {
+        if (highlighter.style) highlighter.style.display = 'none';
+        currentTarget = null;
+        return;
+      }
+  
+      currentTarget = container;
+      const rect = container.getBoundingClientRect ? container.getBoundingClientRect() : { top: 0, left: 0, width: 100, height: 100 };
+      const scrollX = (currentWin && (currentWin.pageXOffset || currentDoc.documentElement?.scrollLeft)) || 0;
+      const scrollY = (currentWin && (currentWin.pageYOffset || currentDoc.documentElement?.scrollTop)) || 0;
+  
+      if (highlighter.style) {
+        highlighter.style.top = `${rect.top + scrollY}px`;
+        highlighter.style.left = `${rect.left + scrollX}px`;
+        highlighter.style.width = `${rect.width}px`;
+        highlighter.style.height = `${rect.height}px`;
+        highlighter.style.display = 'block';
+      }
+    };
+  
+    const onClick = (e) => {
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+  
+      const selected = currentTarget;
+      stop();
+      if (selected && onSelectCallback) {
+        onSelectCallback(selected);
+      }
+    };
+  
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        stop();
+      }
+    };
+  
+    const stop = () => {
+      if (currentDoc.removeEventListener) {
+        currentDoc.removeEventListener('mousemove', onMouseMove, true);
+        currentDoc.removeEventListener('click', onClick, true);
+        currentDoc.removeEventListener('keydown', onKeyDown, true);
+      }
+      if (highlighter && highlighter.style) {
+        highlighter.style.display = 'none';
+      }
+      if (highlighter && highlighter.remove) {
+        highlighter.remove();
+      }
+      activeInspector = null;
+    };
+  
+    if (currentDoc.addEventListener) {
+      currentDoc.addEventListener('mousemove', onMouseMove, true);
+      currentDoc.addEventListener('click', onClick, true);
+      currentDoc.addEventListener('keydown', onKeyDown, true);
+    }
+  
+    activeInspector = { stop, highlighter };
+    return activeInspector;
+  }
+  
+  function stopSectionInspector() {
+    if (activeInspector) {
+      activeInspector.stop();
+    }
+  }
+
+  // ==========================================
   // Module: content.js
   // ==========================================
   const BATCH_SIZE = 15;
@@ -355,6 +559,69 @@
     }
   }
   
+  async function translateSection(
+    sectionElement,
+    progressCallback,
+    doc = (typeof document !== 'undefined' ? document : null),
+    chromeObj = (typeof chrome !== 'undefined' ? chrome : null)
+  ) {
+    const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
+    const currentChrome = chromeObj || (typeof chrome !== 'undefined' ? chrome : null);
+  
+    if (!sectionElement) {
+      throw new Error('Секцію не вибрано');
+    }
+  
+    let elements = collectTextElements(sectionElement);
+  
+    if (elements.length === 0) {
+      const text = (sectionElement.innerText || '').trim();
+      if (text.length >= 2 && (!sectionElement.closest || !sectionElement.closest('pre, code, noscript, style, script, .ai-translated-block'))) {
+        if (!sectionElement.dataset) sectionElement.dataset = {};
+        if (!sectionElement.dataset.aiOriginalText) sectionElement.dataset.aiOriginalText = sectionElement.innerText;
+        if (!sectionElement.dataset.aiOriginalHtml) sectionElement.dataset.aiOriginalHtml = sectionElement.innerHTML || sectionElement.innerText;
+        elements = [sectionElement];
+      }
+    }
+  
+    if (elements.length === 0) {
+      throw new Error('У вибраній секції не знайдено тексту для перекладу');
+    }
+  
+    for (let i = 0; i < elements.length; i += BATCH_SIZE) {
+      const batchElements = elements.slice(i, i + BATCH_SIZE);
+      const texts = batchElements.map(el => el.innerText);
+  
+      if (!currentChrome?.runtime?.sendMessage) {
+        throw new Error('Chrome runtime messaging is not available');
+      }
+  
+      const payload = { texts };
+      const pageLang = currentDoc?.documentElement?.lang;
+      if (pageLang) {
+        payload.sourceLanguage = pageLang;
+      }
+  
+      const res = await currentChrome.runtime.sendMessage({
+        type: 'TRANSLATE_BATCH',
+        payload
+      });
+  
+      if (!res || !res.ok) {
+        throw new Error(res?.error || 'Batch translation failed');
+      }
+  
+      replaceTextBatch(batchElements, res.data.translations);
+  
+      if (progressCallback) {
+        progressCallback(Math.min(i + BATCH_SIZE, elements.length), elements.length);
+      }
+    }
+  
+    attachSectionRestoreBadge(sectionElement, elements, currentDoc);
+    return elements;
+  }
+  
   function handleContentMessage(
     message,
     sender,
@@ -371,6 +638,32 @@
   
     if (message.action === 'TRIGGER_SELECTION_TRANSLATION') {
       handleSelectionTranslation(currentWin, currentChrome);
+      sendResponse({ ok: true });
+      return false;
+    }
+  
+    if (message.action === 'START_SECTION_INSPECTOR') {
+      startSectionInspector((selectedElement) => {
+        translateSection(
+          selectedElement,
+          (done, total) => {
+            if (currentChrome?.runtime?.sendMessage) {
+              currentChrome.runtime.sendMessage({
+                type: 'PAGE_TRANSLATION_PROGRESS',
+                done,
+                total
+              }).catch(() => {});
+            }
+          },
+          currentDoc,
+          currentChrome
+        ).catch((err) => {
+          if (currentWin?.alert) {
+            currentWin.alert(`Помилка перекладу секції: ${err.message}`);
+          }
+        });
+      }, currentDoc, currentWin);
+  
       sendResponse({ ok: true });
       return false;
     }
