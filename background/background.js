@@ -1,9 +1,16 @@
 import { getSettings, saveSettings } from './storage.js';
 import { fetchGeminiModels, translateBatchGemini, translateSingleGemini, translateInputGemini } from './gemini.js';
+import {
+  fetchOpenRouterModels,
+  translateBatchOpenRouter,
+  translateSingleOpenRouter,
+  translateInputOpenRouter
+} from './openrouter.js';
 import { ensureOffscreenDocument, sendToOffscreen } from './offscreen-manager.js';
 
-export function routeTranslation(engine, geminiFn, localFn) {
+export function routeTranslation(engine, geminiFn, localFn, openrouterFn) {
   if (engine === 'local') return localFn();
+  if (engine === 'openrouter' && typeof openrouterFn === 'function') return openrouterFn();
   return geminiFn();
 }
 
@@ -104,6 +111,14 @@ export function handleMessage(message, sender, sendResponse) {
           break;
         }
 
+        case 'FETCH_OPENROUTER_MODELS': {
+          const apiKey = message.payload?.apiKey;
+          const models = await fetchOpenRouterModels(apiKey);
+          await saveSettings({ openrouterAvailableModels: models });
+          sendResponse({ ok: true, data: { models } });
+          break;
+        }
+
         case 'DOWNLOAD_LOCAL_MODEL': {
           const settings = await getSettings();
           const modelId = message.payload?.modelId || settings.localSelectedModel || 'Xenova/opus-mt-en-uk';
@@ -135,6 +150,14 @@ export function handleMessage(message, sender, sendResponse) {
               }
             });
             sendResponse({ ok: true, data: res });
+          } else if (settings.activeEngine === 'openrouter') {
+            const translations = await translateBatchOpenRouter(
+              texts,
+              targetLang,
+              settings.openrouterModel,
+              settings.openrouterApiKey
+            );
+            sendResponse({ ok: true, data: { translations } });
           } else {
             const translations = await translateBatchGemini(
               texts,
@@ -164,6 +187,14 @@ export function handleMessage(message, sender, sendResponse) {
               }
             });
             sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
+          } else if (settings.activeEngine === 'openrouter') {
+            const translation = await translateSingleOpenRouter(
+              text,
+              targetLang,
+              settings.openrouterModel,
+              settings.openrouterApiKey
+            );
+            sendResponse({ ok: true, data: { translation } });
           } else {
             const translation = await translateSingleGemini(
               text,
@@ -184,7 +215,7 @@ export function handleMessage(message, sender, sendResponse) {
           if (settings.activeEngine === 'local') {
             const modelId = settings.localSelectedModel || 'Xenova/opus-mt-en-uk';
             if (modelId.includes('opus-mt-en-uk') && targetLang !== 'Українська') {
-              throw new Error('Легка модель OPUS-MT (EN → UK) перекладає лише з англійської на українську. Для зворотного перекладу інпутів оберіть Gemini або модель NLLB-200 у налаштуваннях.');
+              throw new Error('Легка модель OPUS-MT (EN → UK) перекладає лише з англійської на українську. Для зворотного перекладу інпутів оберіть Gemini, OpenRouter або модель NLLB-200 у налаштуваннях.');
             }
             const res = await sendToOffscreen({
               target: 'offscreen',
@@ -196,6 +227,14 @@ export function handleMessage(message, sender, sendResponse) {
               }
             });
             sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
+          } else if (settings.activeEngine === 'openrouter') {
+            const translation = await translateInputOpenRouter(
+              text,
+              targetLang,
+              settings.openrouterModel,
+              settings.openrouterApiKey
+            );
+            sendResponse({ ok: true, data: { translation } });
           } else {
             const translation = await translateInputGemini(
               text,

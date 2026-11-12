@@ -27,6 +27,13 @@
           </div>
         </label>
         <label class="tab-label">
+          <input type="radio" name="engine" value="openrouter" id="engineOpenRouter">
+          <div class="tab-card">
+            <strong>🚀 OpenRouter (Free)</strong>
+            <span>Єдиний ключ для безкоштовних (:free) моделей: Llama, DeepSeek, Qwen, Gemini</span>
+          </div>
+        </label>
+        <label class="tab-label">
           <input type="radio" name="engine" value="local" id="engineLocal">
           <div class="tab-card">
             <strong>⚡ Вбудована модель (WebGPU)</strong>
@@ -54,6 +61,30 @@
             <option value="gemini-2.5-flash">gemini-2.5-flash (Рекомендовано)</option>
             <option value="gemini-1.5-flash">gemini-1.5-flash</option>
             <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- OpenRouter Settings -->
+      <section id="openrouterSection" class="engine-section hidden">
+        <h3>Параметри OpenRouter API</h3>
+        <div class="form-group">
+          <label for="openrouterApiKey">OpenRouter API Ключ:</label>
+          <div class="input-with-button">
+            <input type="password" id="openrouterApiKey" placeholder="sk-or-v1-...">
+            <button type="button" id="toggleOpenRouterApiKey" class="btn btn-secondary">👁</button>
+            <button type="button" id="fetchOpenRouterModelsBtn" class="btn btn-primary">Отримати free моделі</button>
+          </div>
+          <small class="hint">Створити ключ можна в <a href="https://openrouter.ai/keys" target="_blank">OpenRouter Keys</a>. Підтягуються лише безкоштовні (:free) текстові моделі.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="openrouterModelSelect">Активна безкоштовна модель OpenRouter:</label>
+          <select id="openrouterModelSelect">
+            <option value="openrouter/free">openrouter/free (Авто-вибір безкоштовної)</option>
+            <option value="google/gemini-2.0-flash-exp:free">google/gemini-2.0-flash-exp:free</option>
+            <option value="meta-llama/llama-3.3-70b-instruct:free">meta-llama/llama-3.3-70b-instruct:free</option>
+            <option value="deepseek/deepseek-chat-v3-0324:free">deepseek/deepseek-chat-v3-0324:free</option>
           </select>
         </div>
       </section>

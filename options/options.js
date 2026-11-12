@@ -1,11 +1,31 @@
-export function updateEngineVisibility(engine, geminiSection, localSection) {
+export function updateEngineVisibility(engine, geminiSection, localSection, openrouterSection) {
+  geminiSection?.classList?.add('hidden');
+  localSection?.classList?.add('hidden');
+  openrouterSection?.classList?.add('hidden');
+
   if (engine === 'local') {
-    geminiSection.classList.add('hidden');
-    localSection.classList.remove('hidden');
+    localSection?.classList?.remove('hidden');
+  } else if (engine === 'openrouter') {
+    openrouterSection?.classList?.remove('hidden');
   } else {
-    geminiSection.classList.remove('hidden');
-    localSection.classList.add('hidden');
+    geminiSection?.classList?.remove('hidden');
   }
+}
+
+function escapeHtmlAttr(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function populateSelectModels(selectEl, models, selectedModel) {
+  if (!selectEl || !Array.isArray(models) || models.length === 0) return;
+  selectEl.innerHTML = models.map(m => {
+    const safe = escapeHtmlAttr(m);
+    return `<option value="${safe}" ${m === selectedModel ? 'selected' : ''}>${safe}</option>`;
+  }).join('');
 }
 
 export async function initOptions(
@@ -16,13 +36,19 @@ export async function initOptions(
   if (!doc) return;
 
   const engineGemini = doc.getElementById('engineGemini');
+  const engineOpenRouter = doc.getElementById('engineOpenRouter');
   const engineLocal = doc.getElementById('engineLocal');
   const geminiSection = doc.getElementById('geminiSection');
+  const openrouterSection = doc.getElementById('openrouterSection');
   const localSection = doc.getElementById('localSection');
   const apiKeyInput = doc.getElementById('apiKey');
   const toggleApiKeyBtn = doc.getElementById('toggleApiKey');
   const fetchModelsBtn = doc.getElementById('fetchModelsBtn');
   const modelSelect = doc.getElementById('modelSelect');
+  const openrouterApiKeyInput = doc.getElementById('openrouterApiKey');
+  const toggleOpenRouterApiKeyBtn = doc.getElementById('toggleOpenRouterApiKey');
+  const fetchOpenRouterModelsBtn = doc.getElementById('fetchOpenRouterModelsBtn');
+  const openrouterModelSelect = doc.getElementById('openrouterModelSelect');
   const targetLanguageSelect = doc.getElementById('targetLanguage');
   const inputTargetLanguageSelect = doc.getElementById('inputTargetLanguage');
   const downloadModelBtn = doc.getElementById('downloadModelBtn');
@@ -49,10 +75,13 @@ export async function initOptions(
     });
   }
 
-  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection);
+  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection, openrouterSection);
 
   if (engineGemini) {
     engineGemini.addEventListener('change', () => updateVisibility('gemini'));
+  }
+  if (engineOpenRouter) {
+    engineOpenRouter.addEventListener('change', () => updateVisibility('openrouter'));
   }
   if (engineLocal) {
     engineLocal.addEventListener('change', () => updateVisibility('local'));
@@ -61,6 +90,12 @@ export async function initOptions(
   if (toggleApiKeyBtn && apiKeyInput) {
     toggleApiKeyBtn.addEventListener('click', () => {
       apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+    });
+  }
+
+  if (toggleOpenRouterApiKeyBtn && openrouterApiKeyInput) {
+    toggleOpenRouterApiKeyBtn.addEventListener('click', () => {
+      openrouterApiKeyInput.type = openrouterApiKeyInput.type === 'password' ? 'text' : 'password';
     });
   }
 
@@ -73,20 +108,21 @@ export async function initOptions(
         if (s.activeEngine === 'local') {
           if (engineLocal) engineLocal.checked = true;
           updateVisibility('local');
+        } else if (s.activeEngine === 'openrouter') {
+          if (engineOpenRouter) engineOpenRouter.checked = true;
+          updateVisibility('openrouter');
         } else {
           if (engineGemini) engineGemini.checked = true;
           updateVisibility('gemini');
         }
 
         if (apiKeyInput) apiKeyInput.value = s.geminiApiKey || '';
+        if (openrouterApiKeyInput) openrouterApiKeyInput.value = s.openrouterApiKey || '';
         if (targetLanguageSelect) targetLanguageSelect.value = s.targetLanguage || 'Українська';
         if (inputTargetLanguageSelect) inputTargetLanguageSelect.value = s.inputTargetLanguage || 'English';
 
-        if (modelSelect && Array.isArray(s.geminiAvailableModels) && s.geminiAvailableModels.length > 0) {
-          modelSelect.innerHTML = s.geminiAvailableModels.map(m =>
-            `<option value="${m}" ${m === s.geminiModel ? 'selected' : ''}>${m}</option>`
-          ).join('');
-        }
+        populateSelectModels(modelSelect, s.geminiAvailableModels, s.geminiModel);
+        populateSelectModels(openrouterModelSelect, s.openrouterAvailableModels, s.openrouterModel);
 
         if (s.localSelectedModel && localModelSelect) {
           localModelSelect.value = s.localSelectedModel;
@@ -146,6 +182,39 @@ export async function initOptions(
       } finally {
         fetchModelsBtn.disabled = false;
         fetchModelsBtn.textContent = 'Отримати моделі';
+      }
+    });
+  }
+
+  // Fetch OpenRouter Free Models
+  if (fetchOpenRouterModelsBtn) {
+    fetchOpenRouterModelsBtn.addEventListener('click', async () => {
+      const apiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
+      fetchOpenRouterModelsBtn.disabled = true;
+      fetchOpenRouterModelsBtn.textContent = 'Завантаження...';
+
+      try {
+        const res = await chromeApi.runtime.sendMessage({
+          type: 'FETCH_OPENROUTER_MODELS',
+          payload: { apiKey }
+        });
+
+        if (!res.ok) throw new Error(res.error);
+
+        const prevSelected = openrouterModelSelect ? openrouterModelSelect.value : '';
+        const selected = res.data.models.includes(prevSelected) ? prevSelected : res.data.models[0];
+        populateSelectModels(openrouterModelSelect, res.data.models, selected);
+
+        if (saveStatus) {
+          saveStatus.textContent = `Знайдено ${res.data.models.length} free моделей OpenRouter!`;
+          saveStatus.style.color = '#10b981';
+          setTimeout(() => { if (saveStatus) saveStatus.textContent = ''; }, 3000);
+        }
+      } catch (err) {
+        alertFn(`Помилка отримання моделей OpenRouter: ${err.message}`);
+      } finally {
+        fetchOpenRouterModelsBtn.disabled = false;
+        fetchOpenRouterModelsBtn.textContent = 'Отримати free моделі';
       }
     });
   }
@@ -211,9 +280,16 @@ export async function initOptions(
   // Save Settings
   if (saveBtn) {
     saveBtn.addEventListener('click', async () => {
-      const activeEngine = engineLocal?.checked ? 'local' : 'gemini';
+      let activeEngine = 'gemini';
+      if (engineLocal?.checked) {
+        activeEngine = 'local';
+      } else if (engineOpenRouter?.checked) {
+        activeEngine = 'openrouter';
+      }
       const geminiApiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
       const geminiModel = modelSelect ? modelSelect.value : '';
+      const openrouterApiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
+      const openrouterModel = openrouterModelSelect ? openrouterModelSelect.value : 'openrouter/free';
       const targetLanguage = targetLanguageSelect ? targetLanguageSelect.value : 'Українська';
       const inputTargetLanguage = inputTargetLanguageSelect ? inputTargetLanguageSelect.value : 'English';
       const localSelectedModel = localModelSelect ? localModelSelect.value : 'Xenova/opus-mt-en-uk';
@@ -221,7 +297,16 @@ export async function initOptions(
       try {
         const res = await chromeApi.runtime.sendMessage({
           type: 'SAVE_SETTINGS',
-          payload: { activeEngine, geminiApiKey, geminiModel, targetLanguage, inputTargetLanguage, localSelectedModel }
+          payload: {
+            activeEngine,
+            geminiApiKey,
+            geminiModel,
+            openrouterApiKey,
+            openrouterModel,
+            targetLanguage,
+            inputTargetLanguage,
+            localSelectedModel
+          }
         });
 
         if (res?.ok) {
@@ -247,13 +332,19 @@ export async function initOptions(
 
   return {
     engineGemini,
+    engineOpenRouter,
     engineLocal,
     geminiSection,
+    openrouterSection,
     localSection,
     apiKeyInput,
     toggleApiKeyBtn,
     fetchModelsBtn,
     modelSelect,
+    openrouterApiKeyInput,
+    toggleOpenRouterApiKeyBtn,
+    fetchOpenRouterModelsBtn,
+    openrouterModelSelect,
     targetLanguageSelect,
     inputTargetLanguageSelect,
     downloadModelBtn,

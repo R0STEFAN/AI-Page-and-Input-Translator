@@ -1,8 +1,16 @@
 export const DEFAULT_SETTINGS = {
-  activeEngine: 'gemini', // 'gemini' | 'local'
+  activeEngine: 'gemini', // 'gemini' | 'openrouter' | 'local'
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
   geminiAvailableModels: ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  openrouterApiKey: '',
+  openrouterModel: 'openrouter/free',
+  openrouterAvailableModels: [
+    'openrouter/free',
+    'google/gemini-2.0-flash-exp:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'deepseek/deepseek-chat-v3-0324:free'
+  ],
   targetLanguage: 'Українська',
   inputTargetLanguage: 'English',
   localModelLoaded: false,

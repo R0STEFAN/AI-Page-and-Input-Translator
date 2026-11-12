@@ -19,7 +19,10 @@ body {
 }
 h2 { font-size: 18px; margin-bottom: 16px; color: #111827; }
 h3 { font-size: 15px; margin-bottom: 12px; color: #374151; }
-.engine-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+.engine-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+@media (max-width: 580px) {
+  .engine-tabs { grid-template-columns: 1fr; }
+}
 .tab-label { cursor: pointer; position: relative; }
 .tab-label input {
   position: absolute;

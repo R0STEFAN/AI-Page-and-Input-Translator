@@ -93,9 +93,14 @@ export async function initPopup(
   const settings = settingsRes?.data || {};
 
   if (engineBadge) {
-    engineBadge.textContent = settings.activeEngine === 'local'
-      ? '⚡ Офлайн (WebGPU)'
-      : `🌐 ${settings.geminiModel || 'Gemini'}`;
+    if (settings.activeEngine === 'local') {
+      engineBadge.textContent = '⚡ Офлайн (WebGPU)';
+    } else if (settings.activeEngine === 'openrouter') {
+      const shortName = (settings.openrouterModel || 'openrouter/free').split('/').pop();
+      engineBadge.textContent = `🚀 ${shortName}`;
+    } else {
+      engineBadge.textContent = `🌐 ${settings.geminiModel || 'Gemini'}`;
+    }
   }
   if (langBadge) {
     langBadge.textContent = settings.targetLanguage || 'Українська';
@@ -109,6 +114,20 @@ export async function initPopup(
   if (settings.activeEngine === 'gemini' && !settings.geminiApiKey) {
     if (alertBox) {
       alertBox.textContent = 'Вкажіть API ключ у налаштуваннях';
+      alertBox.classList.remove('hidden');
+    }
+    if (toggleBtn) {
+      toggleBtn.disabled = true;
+    }
+    if (selectSectionBtn) {
+      selectSectionBtn.disabled = true;
+    }
+    if (translateInputBtn) {
+      translateInputBtn.disabled = true;
+    }
+  } else if (settings.activeEngine === 'openrouter' && !settings.openrouterApiKey) {
+    if (alertBox) {
+      alertBox.textContent = 'Вкажіть OpenRouter API ключ у налаштуваннях';
       alertBox.classList.remove('hidden');
     }
     if (toggleBtn) {
