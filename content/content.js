@@ -3,6 +3,7 @@ import { collectTextElements } from './walker.js';
 import { replaceTextBatch, restoreOriginalText, attachSectionRestoreBadge } from './replacer.js';
 import { handleSelectionTranslation } from './selection.js';
 import { startSectionInspector } from './inspector.js';
+import { initInputTracker, translateActiveInput } from './input.js';
 
 export const BATCH_SIZE = 15;
 
@@ -212,7 +213,21 @@ export function handleContentMessage(
     return false;
   }
 
+  if (message.action === 'TRANSLATE_ACTIVE_INPUT') {
+    translateActiveInput(currentDoc, currentChrome, currentWin).catch((err) => {
+      if (currentWin?.alert) {
+        currentWin.alert(`Помилка перекладу поля: ${err.message}`);
+      }
+    });
+    sendResponse({ ok: true });
+    return false;
+  }
+
   return false;
+}
+
+if (typeof document !== 'undefined') {
+  initInputTracker(document);
 }
 
 if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {

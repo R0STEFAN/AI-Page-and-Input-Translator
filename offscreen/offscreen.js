@@ -264,6 +264,13 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
                 opts.tgt_lang = tgtLangCode;
                 if (srcLangCode && srcLangCode !== tgtLangCode) {
                   opts.src_lang = srcLangCode;
+                } else if (!srcLangCode) {
+                  const hasCyrillic = /[а-яА-ЯіїєґІЇЄҐ]/.test(text);
+                  if (hasCyrillic && tgtLangCode !== 'ukr_Cyrl') {
+                    opts.src_lang = 'ukr_Cyrl';
+                  } else if (!hasCyrillic && tgtLangCode !== 'eng_Latn') {
+                    opts.src_lang = 'eng_Latn';
+                  }
                 }
               }
               const out = await pipe(text, opts);

@@ -24,6 +24,7 @@ export async function initOptions(
   const fetchModelsBtn = doc.getElementById('fetchModelsBtn');
   const modelSelect = doc.getElementById('modelSelect');
   const targetLanguageSelect = doc.getElementById('targetLanguage');
+  const inputTargetLanguageSelect = doc.getElementById('inputTargetLanguage');
   const downloadModelBtn = doc.getElementById('downloadModelBtn');
   const modelStatusBadge = doc.getElementById('modelStatusBadge');
   const localModelSelect = doc.getElementById('localModelSelect');
@@ -79,6 +80,7 @@ export async function initOptions(
 
         if (apiKeyInput) apiKeyInput.value = s.geminiApiKey || '';
         if (targetLanguageSelect) targetLanguageSelect.value = s.targetLanguage || 'Українська';
+        if (inputTargetLanguageSelect) inputTargetLanguageSelect.value = s.inputTargetLanguage || 'English';
 
         if (modelSelect && Array.isArray(s.geminiAvailableModels) && s.geminiAvailableModels.length > 0) {
           modelSelect.innerHTML = s.geminiAvailableModels.map(m =>
@@ -213,12 +215,13 @@ export async function initOptions(
       const geminiApiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
       const geminiModel = modelSelect ? modelSelect.value : '';
       const targetLanguage = targetLanguageSelect ? targetLanguageSelect.value : 'Українська';
+      const inputTargetLanguage = inputTargetLanguageSelect ? inputTargetLanguageSelect.value : 'English';
       const localSelectedModel = localModelSelect ? localModelSelect.value : 'Xenova/opus-mt-en-uk';
 
       try {
         const res = await chromeApi.runtime.sendMessage({
           type: 'SAVE_SETTINGS',
-          payload: { activeEngine, geminiApiKey, geminiModel, targetLanguage, localSelectedModel }
+          payload: { activeEngine, geminiApiKey, geminiModel, targetLanguage, inputTargetLanguage, localSelectedModel }
         });
 
         if (res?.ok) {
@@ -252,6 +255,7 @@ export async function initOptions(
     fetchModelsBtn,
     modelSelect,
     targetLanguageSelect,
+    inputTargetLanguageSelect,
     downloadModelBtn,
     modelStatusBadge,
     localModelSelect,

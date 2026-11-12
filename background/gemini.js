@@ -130,3 +130,63 @@ export async function translateSingleGemini(text, targetLanguage, model, apiKey)
   const result = await translateBatchGemini([text], targetLanguage, model, apiKey);
   return result[0] || text;
 }
+
+export function buildInputTranslationPayload(text, targetLanguage) {
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `You are an expert native-speaking assistant helping a user write online (comments, chats, emails, forms). Translate the user's draft text below into natural, idiomatic, authentic ${targetLanguage}.
+RULES:
+1. Sound like a real native speaker — avoid stiff, literal, or robotic word-for-word translation.
+2. Match the original tone (casual, polite, technical, humorous, etc.).
+3. Preserve all line breaks, markdown/code formatting, URLs, @mentions, and emojis.
+4. Return strict JSON matching {"translations": ["..."]} containing ONLY the single translated string.
+
+Draft text:
+${JSON.stringify(text)}`
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature: 0.35,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'OBJECT',
+        properties: {
+          translations: {
+            type: 'ARRAY',
+            items: { type: 'STRING' }
+          }
+        },
+        required: ['translations']
+      }
+    }
+  };
+}
+
+export async function translateInputGemini(text, targetLanguage, model, apiKey) {
+  if (!apiKey || !apiKey.trim()) throw new Error('Вкажіть API ключ Gemini у налаштуваннях');
+  if (!text || !text.trim()) return text;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+  const payload = buildInputTranslationPayload(text, targetLanguage);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `Помилка перекладу Gemini (${res.status})`);
+  }
+
+  const data = await res.json();
+  const translations = parseGeminiResponse(data, 1);
+  return translations.length > 0 ? translations.join('\n') : text;
+}

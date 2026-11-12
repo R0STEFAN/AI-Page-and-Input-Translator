@@ -1,5 +1,5 @@
 import { getSettings, saveSettings } from './storage.js';
-import { fetchGeminiModels, translateBatchGemini, translateSingleGemini } from './gemini.js';
+import { fetchGeminiModels, translateBatchGemini, translateSingleGemini, translateInputGemini } from './gemini.js';
 import { ensureOffscreenDocument, sendToOffscreen } from './offscreen-manager.js';
 
 export function routeTranslation(engine, geminiFn, localFn) {
@@ -12,6 +12,16 @@ export function setupContextMenu(callback) {
   if (typeof chrome !== 'undefined' && chrome.contextMenus) {
     const createMenu = () => {
       if (chrome.contextMenus.create) {
+        chrome.contextMenus.create({
+          id: 'ai-translate-input',
+          title: '✏️ Перекласти текст у полі вводу (AI)',
+          contexts: ['editable']
+        }, () => {
+          if (chrome.runtime?.lastError) {
+            // Ignore potential duplicate or runtime warning
+          }
+        });
+
         chrome.contextMenus.create({
           id: 'ai-translate-selection',
           title: '✨ Перекласти виділене (AI)',
@@ -47,6 +57,14 @@ export async function handleContextMenuClick(info, tab) {
     try {
       if (typeof chrome !== 'undefined' && chrome.tabs?.sendMessage) {
         await chrome.tabs.sendMessage(tab.id, { action: 'TRIGGER_SELECTION_TRANSLATION' });
+      }
+    } catch (err) {
+      console.warn('Could not send message to tab:', err.message);
+    }
+  } else if (info?.menuItemId === 'ai-translate-input' && tab?.id) {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.tabs?.sendMessage) {
+        await chrome.tabs.sendMessage(tab.id, { action: 'TRANSLATE_ACTIVE_INPUT' });
       }
     } catch (err) {
       console.warn('Could not send message to tab:', err.message);
@@ -148,6 +166,38 @@ export function handleMessage(message, sender, sendResponse) {
             sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
           } else {
             const translation = await translateSingleGemini(
+              text,
+              targetLang,
+              settings.geminiModel,
+              settings.geminiApiKey
+            );
+            sendResponse({ ok: true, data: { translation } });
+          }
+          break;
+        }
+
+        case 'TRANSLATE_INPUT': {
+          const settings = await getSettings();
+          const { text } = message.payload || {};
+          const targetLang = message.payload?.targetLanguage || settings.inputTargetLanguage || 'English';
+
+          if (settings.activeEngine === 'local') {
+            const modelId = settings.localSelectedModel || 'Xenova/opus-mt-en-uk';
+            if (modelId.includes('opus-mt-en-uk') && targetLang !== 'Українська') {
+              throw new Error('Легка модель OPUS-MT (EN → UK) перекладає лише з англійської на українську. Для зворотного перекладу інпутів оберіть Gemini або модель NLLB-200 у налаштуваннях.');
+            }
+            const res = await sendToOffscreen({
+              target: 'offscreen',
+              type: 'TRANSLATE_LOCAL_BATCH',
+              payload: {
+                texts: [text],
+                targetLanguage: targetLang,
+                modelId
+              }
+            });
+            sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
+          } else {
+            const translation = await translateInputGemini(
               text,
               targetLang,
               settings.geminiModel,

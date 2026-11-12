@@ -4,6 +4,7 @@ export const DEFAULT_SETTINGS = {
   geminiModel: 'gemini-2.5-flash',
   geminiAvailableModels: ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
   targetLanguage: 'Українська',
+  inputTargetLanguage: 'English',
   localModelLoaded: false,
   localSelectedModel: 'Xenova/opus-mt-en-uk' // Default to lightweight OPUS-MT for weak PCs
 };

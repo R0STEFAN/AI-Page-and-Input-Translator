@@ -21,6 +21,7 @@ export async function initPopup(
   const alertBox = doc.getElementById('alertBox');
   const toggleBtn = doc.getElementById('toggleTranslateBtn');
   const selectSectionBtn = doc.getElementById('selectSectionBtn');
+  const translateInputBtn = doc.getElementById('translateInputBtn');
   const openSettingsBtn = doc.getElementById('openSettingsBtn');
   const progressBox = doc.getElementById('progressBox');
   const progressBar = doc.getElementById('progressBar');
@@ -34,14 +35,23 @@ export async function initPopup(
     });
   }
 
-  // Get active tab
-  let tab = null;
-  try {
-    const tabs = await chromeApi?.tabs?.query?.({ active: true, currentWindow: true });
-    tab = tabs?.[0];
-  } catch (err) {
-    console.warn('Failed to query active tab:', err);
-  }
+  // Query active tab and load settings in parallel for instant popup startup
+  const tabsPromise = chromeApi?.tabs?.query
+    ? Promise.resolve(chromeApi.tabs.query({ active: true, currentWindow: true })).catch(err => {
+        console.warn('Failed to query active tab:', err);
+        return [];
+      })
+    : Promise.resolve([]);
+
+  const settingsPromise = chromeApi?.runtime?.sendMessage
+    ? Promise.resolve(chromeApi.runtime.sendMessage({ type: 'GET_SETTINGS' })).catch(err => {
+        console.warn('Failed to get settings:', err);
+        return {};
+      })
+    : Promise.resolve({});
+
+  const [tabs, settingsRes] = await Promise.all([tabsPromise, settingsPromise]);
+  const tab = tabs?.[0] || null;
 
   if (!tab?.id) {
     return {
@@ -50,6 +60,7 @@ export async function initPopup(
       alertBox,
       toggleBtn,
       selectSectionBtn,
+      translateInputBtn,
       openSettingsBtn,
       progressBox,
       progressBar,
@@ -58,14 +69,7 @@ export async function initPopup(
     };
   }
 
-  // Load Settings
-  let settings = {};
-  try {
-    const settingsRes = await chromeApi?.runtime?.sendMessage?.({ type: 'GET_SETTINGS' });
-    settings = settingsRes?.data || {};
-  } catch (err) {
-    console.warn('Failed to get settings:', err);
-  }
+  const settings = settingsRes?.data || {};
 
   if (engineBadge) {
     engineBadge.textContent = settings.activeEngine === 'local'
@@ -74,6 +78,10 @@ export async function initPopup(
   }
   if (langBadge) {
     langBadge.textContent = settings.targetLanguage || 'Українська';
+  }
+  if (translateInputBtn) {
+    const inputLang = settings.inputTargetLanguage || 'English';
+    translateInputBtn.textContent = `✏️ Перекласти input (→ ${inputLang})`;
   }
 
   // Check readiness
@@ -88,6 +96,9 @@ export async function initPopup(
     if (selectSectionBtn) {
       selectSectionBtn.disabled = true;
     }
+    if (translateInputBtn) {
+      translateInputBtn.disabled = true;
+    }
   } else if (settings.activeEngine === 'local' && !settings.localModelLoaded) {
     if (alertBox) {
       alertBox.textContent = 'Завантажте офлайн модель у налаштуваннях';
@@ -98,6 +109,9 @@ export async function initPopup(
     }
     if (selectSectionBtn) {
       selectSectionBtn.disabled = true;
+    }
+    if (translateInputBtn) {
+      translateInputBtn.disabled = true;
     }
   }
 
@@ -181,12 +195,27 @@ export async function initPopup(
     });
   }
 
+  if (translateInputBtn) {
+    translateInputBtn.addEventListener('click', async () => {
+      try {
+        await chromeApi?.tabs?.sendMessage?.(tab.id, { action: 'TRANSLATE_ACTIVE_INPUT' });
+      } catch (err) {
+        alertFn(`Не вдалося перекласти поле: ${err.message}`);
+        return;
+      }
+      if (typeof window !== 'undefined' && window.close) {
+        window.close();
+      }
+    });
+  }
+
   return {
     engineBadge,
     langBadge,
     alertBox,
     toggleBtn,
     selectSectionBtn,
+    translateInputBtn,
     openSettingsBtn,
     progressBox,
     progressBar,

@@ -25,6 +25,7 @@ export function buildContentBundle() {
     'replacer.js',
     'selection.js',
     'inspector.js',
+    'input.js',
     'content.js'
   ];
 
