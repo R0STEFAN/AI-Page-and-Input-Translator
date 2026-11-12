@@ -75,6 +75,15 @@ export const NLLB_LANG_MAP = {
   'japanese': 'jpn_Jpan'
 };
 
+export function normalizeNewlines(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t');
+}
+
 export function getNllbLanguageCode(lang) {
   if (!lang) return 'ukr_Cyrl';
   const clean = lang.trim().toLowerCase();
@@ -218,7 +227,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
                 opts.src_lang = srcLangCode;
               }
               const out = await pipe(text, opts);
-              translations.push(out[0]?.translation_text || text);
+              translations.push(normalizeNewlines(out[0]?.translation_text || text));
             } catch (err) {
               console.warn('Paragraph translation fallback error:', err);
               translations.push(text);

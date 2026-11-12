@@ -17,6 +17,15 @@ export function filterAndSortModels(apiData) {
   });
 }
 
+export function normalizeNewlines(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\n')
+    .replace(/\\t/g, '\t');
+}
+
 export function buildBatchTranslationPayload(texts, targetLanguage) {
   return {
     contents: [
@@ -24,7 +33,7 @@ export function buildBatchTranslationPayload(texts, targetLanguage) {
         role: 'user',
         parts: [
           {
-            text: `You are a professional website translator. Translate the array of text items below into ${targetLanguage}. Maintain accurate phrasing, punctuation, numbers, and proper nouns. Return strict JSON matching {"translations": ["...", "..."]} with the exact same count and order.\n\nInput JSON:\n${JSON.stringify({ texts })}`
+            text: `You are a professional website translator. Translate the array of text items below into ${targetLanguage}. Maintain accurate phrasing, punctuation, numbers, formatting, line breaks, and proper nouns. Return strict JSON matching {"translations": ["...", "..."]} with the exact same count and order.\n\nInput JSON:\n${JSON.stringify({ texts })}`
           }
         ]
       }
@@ -66,7 +75,7 @@ export function parseGeminiResponse(responseJson, expectedCount) {
     console.warn(`Translation count mismatch: expected ${expectedCount}, got ${translations.length}`);
   }
 
-  return translations;
+  return translations.map(t => normalizeNewlines(t));
 }
 
 export async function fetchGeminiModels(apiKey) {

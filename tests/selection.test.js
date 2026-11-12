@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleSelectionTranslation } from '../content/selection.js';
+import { handleSelectionTranslation, normalizeNewlines } from '../content/selection.js';
 import { translateMainContent, handleContentMessage, BATCH_SIZE } from '../content/content.js';
 
 // Helper for Mock DOM nodes
@@ -285,6 +285,46 @@ test('handleSelectionTranslation handles translation error: alerts and restores 
   const revertedNode = env.container.childNodes[0];
   assert.equal(revertedNode.nodeType, 3, 'Should revert back to TextNode');
   assert.equal(revertedNode.textContent, 'Error prone text');
+});
+
+test('normalizeNewlines converts literal \\n, \\r, \\t and normalizes CRLF', () => {
+  assert.equal(normalizeNewlines('Line1\\n\\nLine2'), 'Line1\n\nLine2');
+  assert.equal(normalizeNewlines('Line1\\r\\nLine2'), 'Line1\nLine2');
+  assert.equal(normalizeNewlines('Tab\\tSpace'), 'Tab\tSpace');
+  assert.equal(normalizeNewlines(null), '');
+  assert.equal(normalizeNewlines(undefined), '');
+});
+
+test('handleSelectionTranslation creates restore button at end and preserves multi-line breaks', async () => {
+  const multiLineOriginal = 'First paragraph\\n\\nSecond paragraph';
+  const env = createMockEnvironment(multiLineOriginal);
+
+  env.chromeObj.runtime.sendMessage = async () => ({
+    ok: true,
+    data: { translation: 'Перший абзац\\n\\nДругий абзац' }
+  });
+
+  await handleSelectionTranslation(env.win, env.chromeObj);
+
+  const translatedSpan = env.container.childNodes[0];
+  assert.equal(translatedSpan.className, 'ai-translated-selection');
+  assert.equal(translatedSpan.textContent, 'Перший абзац\n\nДругий абзац');
+  assert.ok(translatedSpan.childNodes.length >= 1, 'Should contain restore button child');
+
+  const restoreBtn = translatedSpan.childNodes.find(c => c.className === 'ai-restore-selection-btn');
+  assert.ok(restoreBtn, 'Restore button must be present in translated span');
+  assert.equal(restoreBtn.title, 'Повернути оригінал');
+
+  // Trigger restore via button
+  let propagationStopped = false;
+  restoreBtn.dispatchEvent({
+    type: 'click',
+    stopPropagation: () => { propagationStopped = true; }
+  });
+
+  assert.ok(propagationStopped);
+  const restored = env.container.childNodes[0];
+  assert.equal(restored.textContent, 'First paragraph\n\nSecond paragraph');
 });
 
 // -------------------------------------------------------------

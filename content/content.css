@@ -1,19 +1,70 @@
 .ai-translated-block {
   transition: background-color 0.4s ease;
 }
+
 .ai-translated-selection {
-  background-color: #dbeafe;
-  border-bottom: 1.5px dashed #2563eb;
-  cursor: pointer;
-  border-radius: 2px;
-  padding: 0 2px;
+  background-color: transparent !important;
+  color: inherit !important;
+  font: inherit !important;
+  line-height: inherit !important;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  display: inline;
+  position: relative;
 }
+
+.ai-restore-selection-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: baseline;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+  background: rgba(125, 125, 125, 0.15);
+  border: 1px solid rgba(125, 125, 125, 0.25);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.2s ease, background 0.2s ease, transform 0.1s ease;
+  user-select: none;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.ai-restore-selection-btn:hover {
+  opacity: 1;
+  background: rgba(125, 125, 125, 0.35);
+  transform: scale(1.08);
+}
+
+.ai-restore-selection-btn:active {
+  transform: scale(0.95);
+}
+
+.ai-restore-selection-btn svg {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
 .ai-translating-pulse {
   animation: ai-pulse 1.2s infinite ease-in-out;
-  background-color: #fef08a !important;
+  white-space: pre-wrap !important;
+  background-color: rgba(59, 130, 246, 0.12) !important;
+  border-radius: 2px;
+  color: inherit !important;
 }
+
 @keyframes ai-pulse {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
+  0% { opacity: 0.5; }
+  50% { opacity: 0.9; }
+  100% { opacity: 0.5; }
 }
