@@ -12,12 +12,19 @@ import {
   translateSingleCoarena,
   translateInputCoarena
 } from './coarena.js';
+import {
+  fetchOpenCodeModels,
+  translateBatchOpenCode,
+  translateSingleOpenCode,
+  translateInputOpenCode
+} from './opencode.js';
 import { ensureOffscreenDocument, sendToOffscreen } from './offscreen-manager.js';
 
-export function routeTranslation(engine, geminiFn, localFn, openrouterFn, coarenaFn) {
+export function routeTranslation(engine, geminiFn, localFn, openrouterFn, coarenaFn, opencodeFn) {
   if (engine === 'local') return localFn();
   if (engine === 'openrouter' && typeof openrouterFn === 'function') return openrouterFn();
   if (engine === 'coarena' && typeof coarenaFn === 'function') return coarenaFn();
+  if (engine === 'opencode' && typeof opencodeFn === 'function') return opencodeFn();
   return geminiFn();
 }
 
@@ -134,6 +141,14 @@ export function handleMessage(message, sender, sendResponse) {
           break;
         }
 
+        case 'FETCH_OPENCODE_MODELS': {
+          const apiKey = message.payload?.apiKey;
+          const models = await fetchOpenCodeModels(apiKey);
+          await saveSettings({ opencodeAvailableModels: models });
+          sendResponse({ ok: true, data: { models } });
+          break;
+        }
+
         case 'DOWNLOAD_LOCAL_MODEL': {
           const settings = await getSettings();
           const modelId = message.payload?.modelId || settings.localSelectedModel || 'Xenova/opus-mt-en-uk';
@@ -181,6 +196,14 @@ export function handleMessage(message, sender, sendResponse) {
               settings.coarenaApiKey
             );
             sendResponse({ ok: true, data: { translations } });
+          } else if (settings.activeEngine === 'opencode') {
+            const translations = await translateBatchOpenCode(
+              texts,
+              targetLang,
+              settings.opencodeModel,
+              settings.opencodeApiKey
+            );
+            sendResponse({ ok: true, data: { translations } });
           } else {
             const translations = await translateBatchGemini(
               texts,
@@ -224,6 +247,14 @@ export function handleMessage(message, sender, sendResponse) {
               targetLang,
               settings.coarenaModel,
               settings.coarenaApiKey
+            );
+            sendResponse({ ok: true, data: { translation } });
+          } else if (settings.activeEngine === 'opencode') {
+            const translation = await translateSingleOpenCode(
+              text,
+              targetLang,
+              settings.opencodeModel,
+              settings.opencodeApiKey
             );
             sendResponse({ ok: true, data: { translation } });
           } else {
@@ -272,6 +303,14 @@ export function handleMessage(message, sender, sendResponse) {
               targetLang,
               settings.coarenaModel,
               settings.coarenaApiKey
+            );
+            sendResponse({ ok: true, data: { translation } });
+          } else if (settings.activeEngine === 'opencode') {
+            const translation = await translateInputOpenCode(
+              text,
+              targetLang,
+              settings.opencodeModel,
+              settings.opencodeApiKey
             );
             sendResponse({ ok: true, data: { translation } });
           } else {

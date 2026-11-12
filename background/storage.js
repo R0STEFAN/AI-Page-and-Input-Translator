@@ -1,5 +1,5 @@
 export const DEFAULT_SETTINGS = {
-  activeEngine: 'gemini', // 'gemini' | 'coarena' | 'openrouter' | 'local'
+  activeEngine: 'gemini', // 'gemini' | 'coarena' | 'opencode' | 'openrouter' | 'local'
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
   geminiAvailableModels: ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.8-flash'],
@@ -11,6 +11,15 @@ export const DEFAULT_SETTINGS = {
     'minimax-m3-1-flash',
     'gemini-3-8-flash',
     'claude-opus-5-5'
+  ],
+  opencodeApiKey: '',
+  opencodeModel: 'nemotron-3.5-lightning-free',
+  opencodeAvailableModels: [
+    'nemotron-3.5-lightning-free',
+    'minimax-m3.1-flash-free',
+    'deepseek-v4.1-flash-free',
+    'mimo-v2.6-flash-free',
+    'glm-5.3-flash-free'
   ],
   openrouterApiKey: '',
   openrouterModel: 'openrouter/free',

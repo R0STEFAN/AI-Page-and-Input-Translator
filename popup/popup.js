@@ -98,6 +98,9 @@ export async function initPopup(
     } else if (settings.activeEngine === 'coarena') {
       const shortName = (settings.coarenaModel || 'claude-haiku-5-5').split('/').pop();
       engineBadge.textContent = `⚡ ${shortName}`;
+    } else if (settings.activeEngine === 'opencode') {
+      const shortName = (settings.opencodeModel || 'nemotron-3.5-lightning-free').split('/').pop();
+      engineBadge.textContent = `🔓 ${shortName}`;
     } else if (settings.activeEngine === 'openrouter') {
       const shortName = (settings.openrouterModel || 'openrouter/free').split('/').pop();
       engineBadge.textContent = `🚀 ${shortName}`;
@@ -131,6 +134,20 @@ export async function initPopup(
   } else if (settings.activeEngine === 'coarena' && !settings.coarenaApiKey) {
     if (alertBox) {
       alertBox.textContent = 'Вкажіть Coarena API ключ у налаштуваннях';
+      alertBox.classList.remove('hidden');
+    }
+    if (toggleBtn) {
+      toggleBtn.disabled = true;
+    }
+    if (selectSectionBtn) {
+      selectSectionBtn.disabled = true;
+    }
+    if (translateInputBtn) {
+      translateInputBtn.disabled = true;
+    }
+  } else if (settings.activeEngine === 'opencode' && !settings.opencodeApiKey) {
+    if (alertBox) {
+      alertBox.textContent = 'Вкажіть OpenCode API ключ у налаштуваннях';
       alertBox.classList.remove('hidden');
     }
     if (toggleBtn) {

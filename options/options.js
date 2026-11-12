@@ -1,8 +1,9 @@
-export function updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection) {
+export function updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection, opencodeSection) {
   geminiSection?.classList?.add('hidden');
   localSection?.classList?.add('hidden');
   openrouterSection?.classList?.add('hidden');
   coarenaSection?.classList?.add('hidden');
+  opencodeSection?.classList?.add('hidden');
 
   if (engine === 'local') {
     localSection?.classList?.remove('hidden');
@@ -10,6 +11,8 @@ export function updateEngineVisibility(engine, geminiSection, localSection, open
     openrouterSection?.classList?.remove('hidden');
   } else if (engine === 'coarena') {
     coarenaSection?.classList?.remove('hidden');
+  } else if (engine === 'opencode') {
+    opencodeSection?.classList?.remove('hidden');
   } else {
     geminiSection?.classList?.remove('hidden');
   }
@@ -41,10 +44,12 @@ export async function initOptions(
   const engineGemini = doc.getElementById('engineGemini');
   const engineCoarena = doc.getElementById('engineCoarena');
   const engineOpenRouter = doc.getElementById('engineOpenRouter');
+  const engineOpenCode = doc.getElementById('engineOpenCode');
   const engineLocal = doc.getElementById('engineLocal');
   const geminiSection = doc.getElementById('geminiSection');
   const coarenaSection = doc.getElementById('coarenaSection');
   const openrouterSection = doc.getElementById('openrouterSection');
+  const opencodeSection = doc.getElementById('opencodeSection');
   const localSection = doc.getElementById('localSection');
   const apiKeyInput = doc.getElementById('apiKey');
   const toggleApiKeyBtn = doc.getElementById('toggleApiKey');
@@ -54,6 +59,10 @@ export async function initOptions(
   const toggleCoarenaApiKeyBtn = doc.getElementById('toggleCoarenaApiKey');
   const fetchCoarenaModelsBtn = doc.getElementById('fetchCoarenaModelsBtn');
   const coarenaModelSelect = doc.getElementById('coarenaModelSelect');
+  const opencodeApiKeyInput = doc.getElementById('opencodeApiKey');
+  const toggleOpenCodeApiKeyBtn = doc.getElementById('toggleOpenCodeApiKey');
+  const fetchOpenCodeModelsBtn = doc.getElementById('fetchOpenCodeModelsBtn');
+  const opencodeModelSelect = doc.getElementById('opencodeModelSelect');
   const openrouterApiKeyInput = doc.getElementById('openrouterApiKey');
   const toggleOpenRouterApiKeyBtn = doc.getElementById('toggleOpenRouterApiKey');
   const fetchOpenRouterModelsBtn = doc.getElementById('fetchOpenRouterModelsBtn');
@@ -84,7 +93,7 @@ export async function initOptions(
     });
   }
 
-  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection);
+  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection, opencodeSection);
 
   if (engineGemini) {
     engineGemini.addEventListener('change', () => updateVisibility('gemini'));
@@ -94,6 +103,9 @@ export async function initOptions(
   }
   if (engineOpenRouter) {
     engineOpenRouter.addEventListener('change', () => updateVisibility('openrouter'));
+  }
+  if (engineOpenCode) {
+    engineOpenCode.addEventListener('change', () => updateVisibility('opencode'));
   }
   if (engineLocal) {
     engineLocal.addEventListener('change', () => updateVisibility('local'));
@@ -108,6 +120,12 @@ export async function initOptions(
   if (toggleCoarenaApiKeyBtn && coarenaApiKeyInput) {
     toggleCoarenaApiKeyBtn.addEventListener('click', () => {
       coarenaApiKeyInput.type = coarenaApiKeyInput.type === 'password' ? 'text' : 'password';
+    });
+  }
+
+  if (toggleOpenCodeApiKeyBtn && opencodeApiKeyInput) {
+    toggleOpenCodeApiKeyBtn.addEventListener('click', () => {
+      opencodeApiKeyInput.type = opencodeApiKeyInput.type === 'password' ? 'text' : 'password';
     });
   }
 
@@ -132,6 +150,9 @@ export async function initOptions(
         } else if (s.activeEngine === 'coarena') {
           if (engineCoarena) engineCoarena.checked = true;
           updateVisibility('coarena');
+        } else if (s.activeEngine === 'opencode') {
+          if (engineOpenCode) engineOpenCode.checked = true;
+          updateVisibility('opencode');
         } else {
           if (engineGemini) engineGemini.checked = true;
           updateVisibility('gemini');
@@ -139,12 +160,14 @@ export async function initOptions(
 
         if (apiKeyInput) apiKeyInput.value = s.geminiApiKey || '';
         if (coarenaApiKeyInput) coarenaApiKeyInput.value = s.coarenaApiKey || '';
+        if (opencodeApiKeyInput) opencodeApiKeyInput.value = s.opencodeApiKey || '';
         if (openrouterApiKeyInput) openrouterApiKeyInput.value = s.openrouterApiKey || '';
         if (targetLanguageSelect) targetLanguageSelect.value = s.targetLanguage || 'Українська';
         if (inputTargetLanguageSelect) inputTargetLanguageSelect.value = s.inputTargetLanguage || 'English';
 
         populateSelectModels(modelSelect, s.geminiAvailableModels, s.geminiModel);
         populateSelectModels(coarenaModelSelect, s.coarenaAvailableModels, s.coarenaModel);
+        populateSelectModels(opencodeModelSelect, s.opencodeAvailableModels, s.opencodeModel);
         populateSelectModels(openrouterModelSelect, s.openrouterAvailableModels, s.openrouterModel);
 
         if (s.localSelectedModel && localModelSelect) {
@@ -241,6 +264,40 @@ export async function initOptions(
       }
     });
   }
+  // Fetch OpenCode Models
+  if (fetchOpenCodeModelsBtn) {
+    fetchOpenCodeModelsBtn.addEventListener('click', async () => {
+      const apiKey = opencodeApiKeyInput ? opencodeApiKeyInput.value.trim() : '';
+      fetchOpenCodeModelsBtn.disabled = true;
+      fetchOpenCodeModelsBtn.textContent = 'Завантаження...';
+
+      try {
+        const res = await chromeApi.runtime.sendMessage({
+          type: 'FETCH_OPENCODE_MODELS',
+          payload: { apiKey }
+        });
+
+        if (!res.ok) throw new Error(res.error);
+
+        const prevSelected = opencodeModelSelect ? opencodeModelSelect.value : '';
+        const selected = res.data.models.includes(prevSelected) ? prevSelected : res.data.models[0];
+        populateSelectModels(opencodeModelSelect, res.data.models, selected);
+
+        if (saveStatus) {
+          saveStatus.textContent = `Знайдено ${res.data.models.length} моделей OpenCode!`;
+          saveStatus.style.color = '#10b981';
+          setTimeout(() => { if (saveStatus) saveStatus.textContent = ''; }, 3000);
+        }
+      } catch (err) {
+        alertFn(`Помилка отримання моделей OpenCode: ${err.message}`);
+      } finally {
+        fetchOpenCodeModelsBtn.disabled = false;
+        fetchOpenCodeModelsBtn.textContent = 'Отримати моделі';
+      }
+    });
+  }
+
+  // Fetch OpenRouter Free Models
   if (fetchOpenRouterModelsBtn) {
     fetchOpenRouterModelsBtn.addEventListener('click', async () => {
       const apiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
@@ -341,11 +398,15 @@ export async function initOptions(
         activeEngine = 'openrouter';
       } else if (engineCoarena?.checked) {
         activeEngine = 'coarena';
+      } else if (engineOpenCode?.checked) {
+        activeEngine = 'opencode';
       }
       const geminiApiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
       const geminiModel = modelSelect ? modelSelect.value : '';
       const coarenaApiKey = coarenaApiKeyInput ? coarenaApiKeyInput.value.trim() : '';
       const coarenaModel = coarenaModelSelect ? coarenaModelSelect.value : 'claude-haiku-5-5';
+      const opencodeApiKey = opencodeApiKeyInput ? opencodeApiKeyInput.value.trim() : '';
+      const opencodeModel = opencodeModelSelect ? opencodeModelSelect.value : 'nemotron-3.5-lightning-free';
       const openrouterApiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
       const openrouterModel = openrouterModelSelect ? openrouterModelSelect.value : 'openrouter/free';
       const targetLanguage = targetLanguageSelect ? targetLanguageSelect.value : 'Українська';
@@ -361,6 +422,8 @@ export async function initOptions(
             geminiModel,
             coarenaApiKey,
             coarenaModel,
+            opencodeApiKey,
+            opencodeModel,
             openrouterApiKey,
             openrouterModel,
             targetLanguage,
@@ -407,6 +470,10 @@ export async function initOptions(
     toggleCoarenaApiKeyBtn,
     fetchCoarenaModelsBtn,
     coarenaModelSelect,
+    opencodeApiKeyInput,
+    toggleOpenCodeApiKeyBtn,
+    fetchOpenCodeModelsBtn,
+    opencodeModelSelect,
     openrouterApiKeyInput,
     toggleOpenRouterApiKeyBtn,
     fetchOpenRouterModelsBtn,

@@ -41,6 +41,13 @@
           </div>
         </label>
         <label class="tab-label">
+          <input type="radio" name="engine" value="opencode" id="engineOpenCode">
+          <div class="tab-card">
+            <strong>🔓 OpenCode Inference</strong>
+            <span>Inference API: Nemotron-Free, MiniMax-Free, DeepSeek-Free, Claude</span>
+          </div>
+        </label>
+        <label class="tab-label">
           <input type="radio" name="engine" value="local" id="engineLocal">
           <div class="tab-card">
             <strong>⚡ Вбудована модель (WebGPU)</strong>
@@ -93,6 +100,31 @@
             <option value="minimax-m3-1-flash">minimax-m3-1-flash (Ультрашвидка ~700 мс)</option>
             <option value="gemini-3-8-flash">gemini-3-8-flash</option>
             <option value="claude-opus-5-5">claude-opus-5-5</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- OpenCode Settings -->
+      <section id="opencodeSection" class="engine-section hidden">
+        <h3>Параметри OpenCode Console API</h3>
+        <div class="form-group">
+          <label for="opencodeApiKey">OpenCode API Ключ:</label>
+          <div class="input-with-button">
+            <input type="password" id="opencodeApiKey" placeholder="oc_sk_...">
+            <button type="button" id="toggleOpenCodeApiKey" class="btn btn-secondary">👁</button>
+            <button type="button" id="fetchOpenCodeModelsBtn" class="btn btn-primary">Отримати моделі</button>
+          </div>
+          <small class="hint">Створити ключ можна в <a href="https://opencode.ai/console" target="_blank">OpenCode Console</a>. Моделі з суфіксом <code>-free</code> доступні на безкоштовному тарифі.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="opencodeModelSelect">Активна модель OpenCode:</label>
+          <select id="opencodeModelSelect">
+            <option value="nemotron-3.5-lightning-free" selected>nemotron-3.5-lightning-free (Рекомендовано — швидка)</option>
+            <option value="minimax-m3.1-flash-free">minimax-m3.1-flash-free</option>
+            <option value="deepseek-v4.1-flash-free">deepseek-v4.1-flash-free</option>
+            <option value="mimo-v2.6-flash-free">mimo-v2.6-flash-free</option>
+            <option value="glm-5.3-flash-free">glm-5.3-flash-free</option>
           </select>
         </div>
       </section>
