@@ -95,6 +95,9 @@ export async function initPopup(
   if (engineBadge) {
     if (settings.activeEngine === 'local') {
       engineBadge.textContent = '⚡ Офлайн (WebGPU)';
+    } else if (settings.activeEngine === 'coarena') {
+      const shortName = (settings.coarenaModel || 'claude-haiku-5-5').split('/').pop();
+      engineBadge.textContent = `⚡ ${shortName}`;
     } else if (settings.activeEngine === 'openrouter') {
       const shortName = (settings.openrouterModel || 'openrouter/free').split('/').pop();
       engineBadge.textContent = `🚀 ${shortName}`;
@@ -114,6 +117,20 @@ export async function initPopup(
   if (settings.activeEngine === 'gemini' && !settings.geminiApiKey) {
     if (alertBox) {
       alertBox.textContent = 'Вкажіть API ключ у налаштуваннях';
+      alertBox.classList.remove('hidden');
+    }
+    if (toggleBtn) {
+      toggleBtn.disabled = true;
+    }
+    if (selectSectionBtn) {
+      selectSectionBtn.disabled = true;
+    }
+    if (translateInputBtn) {
+      translateInputBtn.disabled = true;
+    }
+  } else if (settings.activeEngine === 'coarena' && !settings.coarenaApiKey) {
+    if (alertBox) {
+      alertBox.textContent = 'Вкажіть Coarena API ключ у налаштуваннях';
       alertBox.classList.remove('hidden');
     }
     if (toggleBtn) {

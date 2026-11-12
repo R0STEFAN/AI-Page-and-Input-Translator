@@ -27,10 +27,17 @@
           </div>
         </label>
         <label class="tab-label">
+          <input type="radio" name="engine" value="coarena" id="engineCoarena">
+          <div class="tab-card">
+            <strong>⚡ Coarena Free Model API</strong>
+            <span>Безкоштовний доступ до Claude, Gemini 3.8, MiniMax, Qwen без квот</span>
+          </div>
+        </label>
+        <label class="tab-label">
           <input type="radio" name="engine" value="openrouter" id="engineOpenRouter">
           <div class="tab-card">
             <strong>🚀 OpenRouter (Free)</strong>
-            <span>Єдиний ключ для безкоштовних (:free) моделей: Llama, DeepSeek, Qwen, Gemini</span>
+            <span>Єдиний ключ для безкоштовних (:free) моделей: Llama, DeepSeek, Qwen</span>
           </div>
         </label>
         <label class="tab-label">
@@ -61,6 +68,31 @@
             <option value="gemini-2.5-flash">gemini-2.5-flash (Рекомендовано)</option>
             <option value="gemini-1.5-flash">gemini-1.5-flash</option>
             <option value="gemini-1.5-pro">gemini-1.5-pro</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Coarena Settings -->
+      <section id="coarenaSection" class="engine-section hidden">
+        <h3>Параметри Coarena Model API</h3>
+        <div class="form-group">
+          <label for="coarenaApiKey">Coarena API Ключ:</label>
+          <div class="input-with-button">
+            <input type="password" id="coarenaApiKey" placeholder="coa_...">
+            <button type="button" id="toggleCoarenaApiKey" class="btn btn-secondary">👁</button>
+            <button type="button" id="fetchCoarenaModelsBtn" class="btn btn-primary">Отримати моделі</button>
+          </div>
+          <small class="hint">Отримати безкоштовний ключ можна на <a href="https://coarena.ai" target="_blank">Coarena.ai</a>. Надає безкоштовні Claude, MiniMax, Qwen, Gemini.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="coarenaModelSelect">Активна модель Coarena:</label>
+          <select id="coarenaModelSelect">
+            <option value="claude-haiku-5-5" selected>claude-haiku-5-5 (Рекомендовано — швидка й точна)</option>
+            <option value="claude-sonnet-5-5">claude-sonnet-5-5</option>
+            <option value="minimax-m3-1-flash">minimax-m3-1-flash (Ультрашвидка ~700 мс)</option>
+            <option value="gemini-3-8-flash">gemini-3-8-flash</option>
+            <option value="claude-opus-5-5">claude-opus-5-5</option>
           </select>
         </div>
       </section>

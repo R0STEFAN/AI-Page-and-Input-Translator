@@ -1,12 +1,15 @@
-export function updateEngineVisibility(engine, geminiSection, localSection, openrouterSection) {
+export function updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection) {
   geminiSection?.classList?.add('hidden');
   localSection?.classList?.add('hidden');
   openrouterSection?.classList?.add('hidden');
+  coarenaSection?.classList?.add('hidden');
 
   if (engine === 'local') {
     localSection?.classList?.remove('hidden');
   } else if (engine === 'openrouter') {
     openrouterSection?.classList?.remove('hidden');
+  } else if (engine === 'coarena') {
+    coarenaSection?.classList?.remove('hidden');
   } else {
     geminiSection?.classList?.remove('hidden');
   }
@@ -36,15 +39,21 @@ export async function initOptions(
   if (!doc) return;
 
   const engineGemini = doc.getElementById('engineGemini');
+  const engineCoarena = doc.getElementById('engineCoarena');
   const engineOpenRouter = doc.getElementById('engineOpenRouter');
   const engineLocal = doc.getElementById('engineLocal');
   const geminiSection = doc.getElementById('geminiSection');
+  const coarenaSection = doc.getElementById('coarenaSection');
   const openrouterSection = doc.getElementById('openrouterSection');
   const localSection = doc.getElementById('localSection');
   const apiKeyInput = doc.getElementById('apiKey');
   const toggleApiKeyBtn = doc.getElementById('toggleApiKey');
   const fetchModelsBtn = doc.getElementById('fetchModelsBtn');
   const modelSelect = doc.getElementById('modelSelect');
+  const coarenaApiKeyInput = doc.getElementById('coarenaApiKey');
+  const toggleCoarenaApiKeyBtn = doc.getElementById('toggleCoarenaApiKey');
+  const fetchCoarenaModelsBtn = doc.getElementById('fetchCoarenaModelsBtn');
+  const coarenaModelSelect = doc.getElementById('coarenaModelSelect');
   const openrouterApiKeyInput = doc.getElementById('openrouterApiKey');
   const toggleOpenRouterApiKeyBtn = doc.getElementById('toggleOpenRouterApiKey');
   const fetchOpenRouterModelsBtn = doc.getElementById('fetchOpenRouterModelsBtn');
@@ -75,10 +84,13 @@ export async function initOptions(
     });
   }
 
-  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection, openrouterSection);
+  const updateVisibility = (engine) => updateEngineVisibility(engine, geminiSection, localSection, openrouterSection, coarenaSection);
 
   if (engineGemini) {
     engineGemini.addEventListener('change', () => updateVisibility('gemini'));
+  }
+  if (engineCoarena) {
+    engineCoarena.addEventListener('change', () => updateVisibility('coarena'));
   }
   if (engineOpenRouter) {
     engineOpenRouter.addEventListener('change', () => updateVisibility('openrouter'));
@@ -90,6 +102,12 @@ export async function initOptions(
   if (toggleApiKeyBtn && apiKeyInput) {
     toggleApiKeyBtn.addEventListener('click', () => {
       apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+    });
+  }
+
+  if (toggleCoarenaApiKeyBtn && coarenaApiKeyInput) {
+    toggleCoarenaApiKeyBtn.addEventListener('click', () => {
+      coarenaApiKeyInput.type = coarenaApiKeyInput.type === 'password' ? 'text' : 'password';
     });
   }
 
@@ -111,17 +129,22 @@ export async function initOptions(
         } else if (s.activeEngine === 'openrouter') {
           if (engineOpenRouter) engineOpenRouter.checked = true;
           updateVisibility('openrouter');
+        } else if (s.activeEngine === 'coarena') {
+          if (engineCoarena) engineCoarena.checked = true;
+          updateVisibility('coarena');
         } else {
           if (engineGemini) engineGemini.checked = true;
           updateVisibility('gemini');
         }
 
         if (apiKeyInput) apiKeyInput.value = s.geminiApiKey || '';
+        if (coarenaApiKeyInput) coarenaApiKeyInput.value = s.coarenaApiKey || '';
         if (openrouterApiKeyInput) openrouterApiKeyInput.value = s.openrouterApiKey || '';
         if (targetLanguageSelect) targetLanguageSelect.value = s.targetLanguage || 'Українська';
         if (inputTargetLanguageSelect) inputTargetLanguageSelect.value = s.inputTargetLanguage || 'English';
 
         populateSelectModels(modelSelect, s.geminiAvailableModels, s.geminiModel);
+        populateSelectModels(coarenaModelSelect, s.coarenaAvailableModels, s.coarenaModel);
         populateSelectModels(openrouterModelSelect, s.openrouterAvailableModels, s.openrouterModel);
 
         if (s.localSelectedModel && localModelSelect) {
@@ -186,7 +209,38 @@ export async function initOptions(
     });
   }
 
-  // Fetch OpenRouter Free Models
+  // Fetch Coarena Models
+  if (fetchCoarenaModelsBtn) {
+    fetchCoarenaModelsBtn.addEventListener('click', async () => {
+      const apiKey = coarenaApiKeyInput ? coarenaApiKeyInput.value.trim() : '';
+      fetchCoarenaModelsBtn.disabled = true;
+      fetchCoarenaModelsBtn.textContent = 'Завантаження...';
+
+      try {
+        const res = await chromeApi.runtime.sendMessage({
+          type: 'FETCH_COARENA_MODELS',
+          payload: { apiKey }
+        });
+
+        if (!res.ok) throw new Error(res.error);
+
+        const prevSelected = coarenaModelSelect ? coarenaModelSelect.value : '';
+        const selected = res.data.models.includes(prevSelected) ? prevSelected : res.data.models[0];
+        populateSelectModels(coarenaModelSelect, res.data.models, selected);
+
+        if (saveStatus) {
+          saveStatus.textContent = `Знайдено ${res.data.models.length} моделей Coarena!`;
+          saveStatus.style.color = '#10b981';
+          setTimeout(() => { if (saveStatus) saveStatus.textContent = ''; }, 3000);
+        }
+      } catch (err) {
+        alertFn(`Помилка отримання моделей Coarena: ${err.message}`);
+      } finally {
+        fetchCoarenaModelsBtn.disabled = false;
+        fetchCoarenaModelsBtn.textContent = 'Отримати моделі';
+      }
+    });
+  }
   if (fetchOpenRouterModelsBtn) {
     fetchOpenRouterModelsBtn.addEventListener('click', async () => {
       const apiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
@@ -285,9 +339,13 @@ export async function initOptions(
         activeEngine = 'local';
       } else if (engineOpenRouter?.checked) {
         activeEngine = 'openrouter';
+      } else if (engineCoarena?.checked) {
+        activeEngine = 'coarena';
       }
       const geminiApiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
       const geminiModel = modelSelect ? modelSelect.value : '';
+      const coarenaApiKey = coarenaApiKeyInput ? coarenaApiKeyInput.value.trim() : '';
+      const coarenaModel = coarenaModelSelect ? coarenaModelSelect.value : 'claude-haiku-5-5';
       const openrouterApiKey = openrouterApiKeyInput ? openrouterApiKeyInput.value.trim() : '';
       const openrouterModel = openrouterModelSelect ? openrouterModelSelect.value : 'openrouter/free';
       const targetLanguage = targetLanguageSelect ? targetLanguageSelect.value : 'Українська';
@@ -301,6 +359,8 @@ export async function initOptions(
             activeEngine,
             geminiApiKey,
             geminiModel,
+            coarenaApiKey,
+            coarenaModel,
             openrouterApiKey,
             openrouterModel,
             targetLanguage,
@@ -332,15 +392,21 @@ export async function initOptions(
 
   return {
     engineGemini,
+    engineCoarena,
     engineOpenRouter,
     engineLocal,
     geminiSection,
+    coarenaSection,
     openrouterSection,
     localSection,
     apiKeyInput,
     toggleApiKeyBtn,
     fetchModelsBtn,
     modelSelect,
+    coarenaApiKeyInput,
+    toggleCoarenaApiKeyBtn,
+    fetchCoarenaModelsBtn,
+    coarenaModelSelect,
     openrouterApiKeyInput,
     toggleOpenRouterApiKeyBtn,
     fetchOpenRouterModelsBtn,

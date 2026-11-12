@@ -1,15 +1,24 @@
 export const DEFAULT_SETTINGS = {
-  activeEngine: 'gemini', // 'gemini' | 'openrouter' | 'local'
+  activeEngine: 'gemini', // 'gemini' | 'coarena' | 'openrouter' | 'local'
   geminiApiKey: '',
   geminiModel: 'gemini-2.5-flash',
-  geminiAvailableModels: ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  geminiAvailableModels: ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-3.8-flash'],
+  coarenaApiKey: '',
+  coarenaModel: 'claude-haiku-5-5',
+  coarenaAvailableModels: [
+    'claude-haiku-5-5',
+    'claude-sonnet-5-5',
+    'minimax-m3-1-flash',
+    'gemini-3-8-flash',
+    'claude-opus-5-5'
+  ],
   openrouterApiKey: '',
   openrouterModel: 'openrouter/free',
   openrouterAvailableModels: [
     'openrouter/free',
-    'google/gemini-2.0-flash-exp:free',
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'deepseek/deepseek-chat-v3-0324:free'
+    'nvidia/nemotron-3.5-lightning:free',
+    'nvidia/nemotron-3-ultra-550b-a55b:free',
+    'nvidia/nemotron-3.5-super-vl:free'
   ],
   targetLanguage: 'Українська',
   inputTargetLanguage: 'English',
