@@ -148,10 +148,13 @@ export function handleContentMessage(
   }
 
   if (message.action === 'START_SECTION_INSPECTOR') {
-    startSectionInspector((selectedElement) => {
+    startSectionInspector((selectedElement, session) => {
       translateSection(
         selectedElement,
         (done, total) => {
+          if (session?.setProgress) {
+            session.setProgress(done, total);
+          }
           if (currentChrome?.runtime?.sendMessage) {
             currentChrome.runtime.sendMessage({
               type: 'PAGE_TRANSLATION_PROGRESS',
@@ -162,11 +165,20 @@ export function handleContentMessage(
         },
         currentDoc,
         currentChrome
-      ).catch((err) => {
-        if (currentWin?.alert) {
-          currentWin.alert(`Помилка перекладу секції: ${err.message}`);
-        }
-      });
+      )
+        .then(() => {
+          if (session?.finish) {
+            session.finish();
+          }
+        })
+        .catch((err) => {
+          if (session?.finish) {
+            session.finish();
+          }
+          if (currentWin?.alert) {
+            currentWin.alert(`Помилка перекладу секції: ${err.message}`);
+          }
+        });
     }, currentDoc, currentWin);
 
     sendResponse({ ok: true });

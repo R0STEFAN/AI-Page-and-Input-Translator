@@ -355,6 +355,46 @@
   // ==========================================
   let activeInspector = null;
   
+  function isCompositeContainer(element, target) {
+    if (!element) return false;
+  
+    const tag = element.tagName?.toLowerCase();
+    const role = element.getAttribute?.('role');
+    if (['main', 'body', 'html'].includes(tag) || ['main', 'feed'].includes(role)) {
+      return true;
+    }
+  
+    if (element.querySelectorAll) {
+      const commentSelector = 'sh-comment, [id*="comment" i], [class*="comment" i], [id*="reply" i], [class*="reply" i], [slot="comments"]';
+      const comments = element.querySelectorAll(commentSelector);
+  
+      if (comments.length > 0) {
+        let targetInComment = false;
+        for (const c of comments) {
+          if (c === target || (c.contains && c.contains(target))) {
+            targetInComment = true;
+            break;
+          }
+        }
+  
+        if (!targetInComment) {
+          return true;
+        }
+  
+        if (comments.length > 1) {
+          return true;
+        }
+      }
+  
+      const articles = element.querySelectorAll('article, [role="article"], sh-post');
+      if (articles.length > 1) {
+        return true;
+      }
+    }
+  
+    return false;
+  }
+  
   function findSectionContainer(el, doc = typeof document !== 'undefined' ? document : null) {
     const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
     if (!el || !currentDoc || el === currentDoc.body || el === currentDoc.documentElement) return null;
@@ -365,34 +405,41 @@
     }
   
     let curr = el;
-    let semanticCandidate = null;
-    let divCandidate = null;
-    let leafCandidate = null;
+    const inlineTags = ['span', 'a', 'strong', 'em', 'b', 'i', 'code', 'small', 'sub', 'sup', 'mark', 'time'];
+    while (curr && inlineTags.includes(curr.tagName?.toLowerCase()) && curr.parentElement && curr !== currentDoc.body) {
+      curr = curr.parentElement;
+    }
+  
+    let candidate = curr;
   
     while (curr && curr !== currentDoc.body && curr !== currentDoc.documentElement) {
-      const tag = curr.tagName?.toLowerCase();
-      const isSemantic = ['article', 'section', 'aside', 'main', 'blockquote', 'li', 'form'].includes(tag) ||
-        (curr.getAttribute && ['region', 'article', 'feed'].includes(curr.getAttribute('role')));
-  
-      const textLen = (curr.innerText || '').trim().length;
-  
-      if (isSemantic && textLen >= 15) {
-        semanticCandidate = curr;
+      if (isCompositeContainer(curr, el)) {
         break;
       }
   
-      if (tag === 'div' && textLen >= 25 && !divCandidate) {
-        divCandidate = curr;
+      const tag = curr.tagName?.toLowerCase();
+      const textLen = (curr.innerText || '').trim().length;
+  
+      const isSectionTag = ['article', 'section', 'aside', 'blockquote', 'li', 'form'].includes(tag);
+      const isContentDiv = tag === 'div' && textLen >= 25;
+  
+      if (isSectionTag && textLen >= 15) {
+        candidate = curr;
+        break;
       }
   
-      if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag) && !leafCandidate) {
-        leafCandidate = curr;
+      if (isContentDiv) {
+        candidate = curr;
+      }
+  
+      if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+        candidate = curr;
       }
   
       curr = curr.parentElement;
     }
   
-    return semanticCandidate || divCandidate || leafCandidate || el;
+    return candidate || el;
   }
   
   function startSectionInspector(
@@ -422,6 +469,7 @@
       }
     }
   
+    const tooltip = highlighter.querySelector ? highlighter.querySelector('.ai-section-tooltip') : null;
     let currentTarget = null;
   
     const onMouseMove = (e) => {
@@ -445,6 +493,65 @@
         highlighter.style.height = `${rect.height}px`;
         highlighter.style.display = 'block';
       }
+  
+      if (tooltip && !highlighter.classList?.contains('ai-thinking')) {
+        const tag = container.tagName?.toLowerCase();
+        let label = 'секцію';
+        if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+          label = 'блок тексту';
+        } else if (container.closest && container.closest('sh-comment, [class*="comment" i]')) {
+          label = 'коментар';
+        } else if ((container.closest && container.closest('sh-post, article')) || tag === 'article') {
+          label = 'пост';
+        }
+        tooltip.textContent = `🎯 Перекласти ${label} • Esc — скасувати`;
+      }
+    };
+  
+    const detachEvents = () => {
+      if (currentDoc.removeEventListener) {
+        currentDoc.removeEventListener('mousemove', onMouseMove, true);
+        currentDoc.removeEventListener('click', onClick, true);
+        currentDoc.removeEventListener('keydown', onKeyDown, true);
+      }
+    };
+  
+    const setThinkingMode = (selectedEl) => {
+      if (!highlighter) return;
+      if (highlighter.classList && highlighter.classList.add) {
+        highlighter.classList.add('ai-thinking');
+      }
+      const rect = selectedEl.getBoundingClientRect ? selectedEl.getBoundingClientRect() : { top: 0, left: 0, width: 100, height: 100 };
+      const scrollX = (currentWin && (currentWin.pageXOffset || currentDoc.documentElement?.scrollLeft)) || 0;
+      const scrollY = (currentWin && (currentWin.pageYOffset || currentDoc.documentElement?.scrollTop)) || 0;
+  
+      if (highlighter.style) {
+        highlighter.style.top = `${rect.top + scrollY}px`;
+        highlighter.style.left = `${rect.left + scrollX}px`;
+        highlighter.style.width = `${rect.width}px`;
+        highlighter.style.height = `${rect.height}px`;
+        highlighter.style.display = 'block';
+      }
+      if (tooltip) {
+        tooltip.innerHTML = '<span class="ai-thinking-spinner"></span><span>✨ Перекладаємо секцію...</span>';
+      }
+    };
+  
+    const finishThinking = () => {
+      if (!highlighter) return;
+      if (highlighter.classList && highlighter.classList.add) {
+        highlighter.classList.add('ai-fade-out');
+      }
+      const timer = typeof setTimeout === 'function' ? setTimeout : (fn) => fn();
+      timer(() => {
+        if (highlighter && highlighter.remove) {
+          highlighter.remove();
+        }
+        if (highlighter && highlighter.style) {
+          highlighter.style.display = 'none';
+        }
+      }, 400);
+      activeInspector = null;
     };
   
     const onClick = (e) => {
@@ -453,9 +560,28 @@
       if (e.stopImmediatePropagation) e.stopImmediatePropagation();
   
       const selected = currentTarget;
-      stop();
-      if (selected && onSelectCallback) {
-        onSelectCallback(selected);
+      if (!selected) {
+        stop();
+        return;
+      }
+  
+      detachEvents();
+      setThinkingMode(selected);
+  
+      const session = {
+        highlighter,
+        setProgress: (done, total) => {
+          if (tooltip) {
+            tooltip.innerHTML = `<span class="ai-thinking-spinner"></span><span>✨ Перекладаємо: ${done} / ${total}</span>`;
+          }
+        },
+        finish: () => {
+          finishThinking();
+        }
+      };
+  
+      if (onSelectCallback) {
+        onSelectCallback(selected, session);
       }
     };
   
@@ -466,11 +592,7 @@
     };
   
     const stop = () => {
-      if (currentDoc.removeEventListener) {
-        currentDoc.removeEventListener('mousemove', onMouseMove, true);
-        currentDoc.removeEventListener('click', onClick, true);
-        currentDoc.removeEventListener('keydown', onKeyDown, true);
-      }
+      detachEvents();
       if (highlighter && highlighter.style) {
         highlighter.style.display = 'none';
       }
@@ -486,7 +608,7 @@
       currentDoc.addEventListener('keydown', onKeyDown, true);
     }
   
-    activeInspector = { stop, highlighter };
+    activeInspector = { stop, highlighter, finishThinking };
     return activeInspector;
   }
   
@@ -643,10 +765,13 @@
     }
   
     if (message.action === 'START_SECTION_INSPECTOR') {
-      startSectionInspector((selectedElement) => {
+      startSectionInspector((selectedElement, session) => {
         translateSection(
           selectedElement,
           (done, total) => {
+            if (session?.setProgress) {
+              session.setProgress(done, total);
+            }
             if (currentChrome?.runtime?.sendMessage) {
               currentChrome.runtime.sendMessage({
                 type: 'PAGE_TRANSLATION_PROGRESS',
@@ -657,11 +782,20 @@
           },
           currentDoc,
           currentChrome
-        ).catch((err) => {
-          if (currentWin?.alert) {
-            currentWin.alert(`Помилка перекладу секції: ${err.message}`);
-          }
-        });
+        )
+          .then(() => {
+            if (session?.finish) {
+              session.finish();
+            }
+          })
+          .catch((err) => {
+            if (session?.finish) {
+              session.finish();
+            }
+            if (currentWin?.alert) {
+              currentWin.alert(`Помилка перекладу секції: ${err.message}`);
+            }
+          });
       }, currentDoc, currentWin);
   
       sendResponse({ ok: true });

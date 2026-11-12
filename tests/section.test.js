@@ -257,8 +257,10 @@ test('startSectionInspector creates highlighter overlay and handles hover, click
   doc._targetPointElement = section;
 
   let selected = null;
-  const inspector = startSectionInspector((el) => {
+  let receivedSession = null;
+  const inspector = startSectionInspector((el, session) => {
     selected = el;
+    receivedSession = session;
   }, doc, { pageXOffset: 0, pageYOffset: 0 });
 
   assert.ok(inspector, 'Inspector instance returned');
@@ -284,7 +286,49 @@ test('startSectionInspector creates highlighter overlay and handles hover, click
   assert.ok(prevented, 'Click event default must be prevented');
   assert.ok(stopped, 'Click event propagation must be stopped');
   assert.equal(selected, section, 'Selected section passed to callback');
-  assert.equal(highlighter.style.display, 'none', 'Highlighter hidden after selection');
+  assert.ok(highlighter.classList.contains('ai-thinking'), 'Highlighter transitions to ai-thinking mode upon click');
+  assert.equal(highlighter.style.display, 'block', 'Highlighter remains visible showing thinking effect');
+
+  // Test progress update during thinking
+  assert.ok(receivedSession, 'Session provided to callback');
+  receivedSession.setProgress(5, 10);
+  const tooltip = highlighter.querySelector('.ai-section-tooltip');
+  assert.ok(tooltip.innerHTML.includes('5 / 10'), 'Tooltip displays thinking progress');
+
+  // Test finishing thinking session
+  receivedSession.finish();
+  assert.ok(highlighter.classList.contains('ai-fade-out'), 'Highlighter fades out when thinking finishes');
+});
+
+test('findSectionContainer selects post body and avoids swallowing comments in composite container', () => {
+  const doc = new MockDocument();
+  const article = new MockDOMElement('article');
+
+  const postBody = new MockDOMElement('div', 'This is the main post content describing an issue in detail.');
+  const p1 = new MockDOMElement('p', 'First paragraph of post.');
+  const p2 = new MockDOMElement('p', 'Second paragraph of post.');
+  postBody.appendChild(p1);
+  postBody.appendChild(p2);
+
+  const commentsContainer = new MockDOMElement('div');
+  commentsContainer.className = 'comments-tree';
+  const comment1 = new MockDOMElement('div', 'This is a comment replying to the post.');
+  comment1.className = 'comment-item';
+  const commentP = new MockDOMElement('p', 'Comment text.');
+  comment1.appendChild(commentP);
+  commentsContainer.appendChild(comment1);
+
+  article.appendChild(postBody);
+  article.appendChild(commentsContainer);
+  doc.body.appendChild(article);
+
+  // When hovering on a paragraph of the post body
+  const selectedForPost = findSectionContainer(p1, doc);
+  assert.equal(selectedForPost, postBody, 'Must select post body div and NOT outer article containing comments');
+
+  // When hovering on a comment
+  const selectedForComment = findSectionContainer(commentP, doc);
+  assert.equal(selectedForComment, comment1, 'Must select individual comment and NOT outer article');
 });
 
 test('startSectionInspector handles Escape key cancel', () => {
