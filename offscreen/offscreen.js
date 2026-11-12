@@ -49,14 +49,69 @@ export async function getPipeline(progressCallback) {
     env.allowLocalModels = false;
     env.useBrowserCache = true;
 
+    // Direct WASM binaries to local vendored files inside the extension
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL('offscreen/vendor/wasm/');
+    }
+
+    // Enforce 1 thread for WASM to avoid SharedArrayBuffer restrictions in browser extensions
+    if (env.backends?.onnx?.wasm) {
+      env.backends.onnx.wasm.numThreads = 1;
+    }
+
+    // Safely check if WebGPU adapter is actually available
     const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    let device = hasWebGPU ? 'webgpu' : 'wasm';
+    if (hasWebGPU) {
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) {
+          device = 'wasm';
+        }
+      } catch {
+        device = 'wasm';
+      }
+    }
+
+    // Monotonic multi-file download progress tracking
+    const fileProgress = {};
+    let maxPercent = 0;
 
     translatorPipeline = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
-      device: hasWebGPU ? 'webgpu' : 'wasm',
+      device,
       progress_callback: (p) => {
-        if (progressCallback && p.status === 'progress') {
-          progressCallback(Math.round((p.loaded / p.total) * 100));
+        if (!p || !p.file || !progressCallback) return;
+
+        if (p.status === 'initiate' || p.status === 'download') {
+          if (!fileProgress[p.file]) {
+            fileProgress[p.file] = { loaded: 0, total: p.total || 0 };
+          }
+        } else if (p.status === 'progress') {
+          fileProgress[p.file] = {
+            loaded: p.loaded || 0,
+            total: Math.max(p.total || 0, fileProgress[p.file]?.total || 0)
+          };
+        } else if (p.status === 'done') {
+          if (fileProgress[p.file]) {
+            fileProgress[p.file].loaded = fileProgress[p.file].total;
+          }
         }
+
+        let totalBytes = 0;
+        let loadedBytes = 0;
+        for (const item of Object.values(fileProgress)) {
+          totalBytes += item.total;
+          loadedBytes += item.loaded;
+        }
+
+        let percent = 0;
+        if (totalBytes > 0) {
+          percent = Math.min(100, Math.round((loadedBytes / totalBytes) * 100));
+        }
+
+        maxPercent = Math.max(maxPercent, percent);
+        const fileName = p.file.split('/').pop();
+        progressCallback(maxPercent, fileName);
       }
     });
     return translatorPipeline;
@@ -75,10 +130,11 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     }
 
     if (message.type === 'LOAD_LOCAL_MODEL') {
-      getPipeline((percent) => {
+      getPipeline((percent, file) => {
         chrome.runtime.sendMessage({
           type: 'LOCAL_MODEL_DOWNLOAD_PROGRESS',
-          progress: percent
+          progress: percent,
+          file: file
         }).catch(() => {});
       })
         .then(() => sendResponse({ ok: true, data: { success: true } }))

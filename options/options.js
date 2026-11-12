@@ -137,7 +137,9 @@ export async function initOptions(
       const progressListener = (msg) => {
         if (msg.type === 'LOCAL_MODEL_DOWNLOAD_PROGRESS') {
           if (progressBar) progressBar.style.width = `${msg.progress}%`;
-          if (progressText) progressText.textContent = `${msg.progress}%`;
+          if (progressText) {
+            progressText.textContent = msg.file ? `Завантаження (${msg.file}): ${msg.progress}%` : `${msg.progress}%`;
+          }
         }
       };
 

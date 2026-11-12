@@ -27,6 +27,10 @@ test('manifest.json exists and has valid MV3 fields', () => {
     'host_permissions must include Hugging Face URL'
   );
 
+  // Verify CSP allows wasm-unsafe-eval
+  assert.ok(manifest.content_security_policy?.extension_pages?.includes("'wasm-unsafe-eval'"),
+    'content_security_policy.extension_pages must include wasm-unsafe-eval for WebAssembly');
+
   // Verify content scripts
   assert.ok(Array.isArray(manifest.content_scripts), 'content_scripts must be an array');
   assert.ok(manifest.content_scripts.length > 0, 'content_scripts must have at least one entry');
