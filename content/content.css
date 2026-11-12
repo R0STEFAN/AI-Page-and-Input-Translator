@@ -1,0 +1,19 @@
+.ai-translated-block {
+  transition: background-color 0.4s ease;
+}
+.ai-translated-selection {
+  background-color: #dbeafe;
+  border-bottom: 1.5px dashed #2563eb;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.ai-translating-pulse {
+  animation: ai-pulse 1.2s infinite ease-in-out;
+  background-color: #fef08a !important;
+}
+@keyframes ai-pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
