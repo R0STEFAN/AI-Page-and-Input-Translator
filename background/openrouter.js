@@ -21,8 +21,11 @@ function getOpenRouterHeaders(apiKey) {
 
 export function isFreeOpenRouterModel(model) {
   if (!model?.id) return false;
-  if (Array.isArray(model.architecture?.output_modalities) && !model.architecture.output_modalities.includes('text')) {
-    return false;
+  const outModalities = model.architecture?.output_modalities;
+  if (Array.isArray(outModalities)) {
+    if (!outModalities.includes('text') || outModalities.includes('audio')) {
+      return false;
+    }
   }
   if (model.id === 'openrouter/free' || model.id.endsWith(':free')) {
     return true;
@@ -30,7 +33,11 @@ export function isFreeOpenRouterModel(model) {
   if (model.pricing) {
     const promptCost = Number(model.pricing.prompt);
     const completionCost = Number(model.pricing.completion);
-    if (Number.isFinite(promptCost) && Number.isFinite(completionCost) && promptCost === 0 && completionCost === 0) {
+    const hasPaidCost = Object.values(model.pricing).some(v => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0;
+    });
+    if (!hasPaidCost && Number.isFinite(promptCost) && Number.isFinite(completionCost) && promptCost === 0 && completionCost === 0) {
       return true;
     }
   }
