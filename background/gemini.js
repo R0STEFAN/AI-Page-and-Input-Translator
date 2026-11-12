@@ -4,7 +4,7 @@ export function filterAndSortModels(apiData) {
   const models = apiData.models
     .filter(m => {
       const methods = m.supportedGenerationMethods || [];
-      return methods.includes('generateContent') && !m.name.includes('embedding');
+      return m?.name && methods.includes('generateContent') && !m.name?.includes('embedding');
     })
     .map(m => m.name.replace(/^models\//, ''));
 

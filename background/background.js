@@ -8,13 +8,30 @@ export function routeTranslation(engine, geminiFn, localFn) {
 }
 
 // Setup Context Menu on install
-export function setupContextMenu() {
-  if (typeof chrome !== 'undefined' && chrome.contextMenus?.create) {
-    chrome.contextMenus.create({
-      id: 'ai-translate-selection',
-      title: '✨ Перекласти виділене (AI)',
-      contexts: ['selection']
-    });
+export function setupContextMenu(callback) {
+  if (typeof chrome !== 'undefined' && chrome.contextMenus) {
+    const createMenu = () => {
+      if (chrome.contextMenus.create) {
+        chrome.contextMenus.create({
+          id: 'ai-translate-selection',
+          title: '✨ Перекласти виділене (AI)',
+          contexts: ['selection']
+        }, () => {
+          if (chrome.runtime?.lastError) {
+            // Ignore potential duplicate or runtime warning
+          }
+          if (callback) callback();
+        });
+      }
+    };
+
+    if (typeof chrome.contextMenus.removeAll === 'function') {
+      chrome.contextMenus.removeAll(() => {
+        createMenu();
+      });
+    } else {
+      createMenu();
+    }
   }
 }
 

@@ -21,6 +21,19 @@ test('filterAndSortModels extracts generateContent models and prioritizes flash'
   ]);
 });
 
+test('filterAndSortModels handles models with missing or undefined name safely', () => {
+  const mockApiData = {
+    models: [
+      { supportedGenerationMethods: ['generateContent'] },
+      { name: null, supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }
+    ]
+  };
+
+  const models = filterAndSortModels(mockApiData);
+  assert.deepEqual(models, ['gemini-2.5-flash']);
+});
+
 test('buildBatchTranslationPayload formats structured JSON request', () => {
   const texts = ['Hello world', 'Welcome to our blog'];
   const payload = buildBatchTranslationPayload(texts, 'Українська');

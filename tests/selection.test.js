@@ -554,3 +554,53 @@ test('handleContentMessage works with globals when parameters are omitted', () =
   }
 });
 
+test('translateMainContent halts immediately if user restores original text during batch processing', async () => {
+  const env = createMockEnvironment();
+
+  // Create a main container with 30 paragraphs (2 batches of 15)
+  const mainEl = env.doc.createElement('main');
+  const paragraphs = [];
+  for (let i = 0; i < 30; i++) {
+    const p = env.doc.createElement('p');
+    p.tagName = 'P';
+    p.innerText = `Original paragraph ${i + 1}`;
+    p.closest = () => null;
+    p.querySelector = () => null;
+    paragraphs.push(p);
+    mainEl.appendChild(p);
+  }
+
+  env.doc.querySelector = (sel) => {
+    if (sel.includes('main')) return mainEl;
+    return null;
+  };
+  mainEl.innerText = 'x'.repeat(400);
+  mainEl.querySelectorAll = (sel) => {
+    if (sel.includes('p')) return paragraphs;
+    return [];
+  };
+
+  let batchCount = 0;
+  env.chromeObj.runtime.sendMessage = async (msg) => {
+    if (msg.type === 'TRANSLATE_BATCH') {
+      batchCount++;
+      // On the first batch response, simulate the user hitting "restore"
+      delete env.doc.body.dataset.aiPageTranslated;
+      return {
+        ok: true,
+        data: { translations: msg.payload.texts.map(t => `[TR] ${t}`) }
+      };
+    }
+    return { ok: false };
+  };
+
+  await translateMainContent(null, env.doc, env.chromeObj);
+
+  // Since aiPageTranslated was deleted during batch 1, batch 1 should not overwrite
+  // and batch 2 should never even execute
+  assert.equal(batchCount, 1, 'Should stop after first batch and not process second batch');
+  // Paragraph 16 (in batch 2) must remain original
+  assert.equal(paragraphs[15].innerText, 'Original paragraph 16');
+  assert.equal(paragraphs[15].classList.contains('ai-translated-block'), false);
+});
+

@@ -25,6 +25,10 @@ export async function translateMainContent(
   }
 
   for (let i = 0; i < elements.length; i += BATCH_SIZE) {
+    if (currentDoc?.body?.dataset?.aiPageTranslated !== 'true') {
+      return;
+    }
+
     const batchElements = elements.slice(i, i + BATCH_SIZE);
     const texts = batchElements.map(el => el.innerText);
 
@@ -36,6 +40,10 @@ export async function translateMainContent(
       type: 'TRANSLATE_BATCH',
       payload: { texts }
     });
+
+    if (currentDoc?.body?.dataset?.aiPageTranslated !== 'true') {
+      return;
+    }
 
     if (!res || !res.ok) {
       throw new Error(res?.error || 'Batch translation failed');

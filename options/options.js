@@ -153,6 +153,9 @@ export async function initOptions(
           modelStatusBadge.textContent = 'Завантажено і готово';
           modelStatusBadge.classList.add('ready');
         }
+        if (downloadModelBtn) {
+          downloadModelBtn.textContent = 'Оновити модель';
+        }
         if (progressBar) progressBar.style.width = '100%';
         if (progressText) progressText.textContent = 'Готово!';
       } catch (err) {

@@ -72,6 +72,8 @@ test('options.css contains necessary layout and utility rules', () => {
   assert.ok(css.includes('.hidden'), 'Must have .hidden utility');
   assert.ok(css.includes('.progress-bar'), 'Must have .progress-bar class');
   assert.ok(css.includes('.badge.ready'), 'Must have .badge.ready class');
+  assert.ok(css.includes(':focus-within'), 'Must have :focus-within rule for keyboard accessibility');
+  assert.ok(css.includes('opacity: 0'), 'Radio inputs must be visually hidden without display:none');
 });
 
 test('updateEngineVisibility toggles .hidden class correctly', () => {
@@ -260,6 +262,7 @@ test('initOptions loads settings and binds UI interactions', async () => {
 
   await downloadPromise;
   assert.equal(doc.getElementById('modelStatusBadge').textContent, 'Завантажено і готово');
+  assert.equal(doc.getElementById('downloadModelBtn').textContent, 'Оновити модель');
   assert.equal(doc.getElementById('progressBar').style.width, '100%');
   assert.equal(doc.getElementById('progressText').textContent, 'Готово!');
 

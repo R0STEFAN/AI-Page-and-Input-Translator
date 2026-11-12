@@ -34,7 +34,7 @@ let translatorPipeline = null;
 let isModelLoading = false;
 
 // Dynamically imports Transformers.js when requested
-async function getPipeline(progressCallback) {
+export async function getPipeline(progressCallback) {
   if (translatorPipeline) return translatorPipeline;
   if (isModelLoading) {
     while (isModelLoading) {
@@ -45,11 +45,14 @@ async function getPipeline(progressCallback) {
 
   isModelLoading = true;
   try {
-    const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+    const { pipeline, env } = await import('./vendor/transformers.js');
     env.allowLocalModels = false;
     env.useBrowserCache = true;
 
+    const hasWebGPU = typeof navigator !== 'undefined' && 'gpu' in navigator;
+
     translatorPipeline = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
+      device: hasWebGPU ? 'webgpu' : 'wasm',
       progress_callback: (p) => {
         if (progressCallback && p.status === 'progress') {
           progressCallback(Math.round((p.loaded / p.total) * 100));

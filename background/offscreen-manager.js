@@ -30,7 +30,7 @@ export async function ensureOffscreenDocument() {
 export async function sendToOffscreen(message) {
   await ensureOffscreenDocument();
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ target: 'offscreen', ...message }, (response) => {
+    chrome.runtime.sendMessage({ ...message, target: 'offscreen' }, (response) => {
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
         return;

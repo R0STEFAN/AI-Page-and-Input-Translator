@@ -16,6 +16,25 @@ test('manifest.json exists and has valid MV3 fields', () => {
   assert.ok(manifest.permissions.includes('offscreen'));
   assert.ok(manifest.action && manifest.action.default_popup);
 
+  // Verify host permissions
+  assert.ok(Array.isArray(manifest.host_permissions), 'host_permissions must be an array');
+  assert.ok(
+    manifest.host_permissions.some(p => p.includes('generativelanguage.googleapis.com')),
+    'host_permissions must include Gemini API URL'
+  );
+  assert.ok(
+    manifest.host_permissions.some(p => p.includes('huggingface.co')),
+    'host_permissions must include Hugging Face URL'
+  );
+
+  // Verify content scripts
+  assert.ok(Array.isArray(manifest.content_scripts), 'content_scripts must be an array');
+  assert.ok(manifest.content_scripts.length > 0, 'content_scripts must have at least one entry');
+  assert.ok(
+    manifest.content_scripts[0].js.includes('content/content.bundle.js'),
+    'content_scripts must reference bundled script content/content.bundle.js'
+  );
+
   // Verify all declared icons exist on disk
   for (const [size, iconPath] of Object.entries(manifest.icons)) {
     const fullPath = path.resolve(iconPath);

@@ -16,6 +16,8 @@ test('all required extension files exist, are readable, non-empty, and valid', (
     'background/offscreen-manager.js',
     'offscreen/offscreen.html',
     'offscreen/offscreen.js',
+    'offscreen/vendor/transformers.js',
+    'content/content.bundle.js',
     'content/content.js',
     'content/detector.js',
     'content/walker.js',

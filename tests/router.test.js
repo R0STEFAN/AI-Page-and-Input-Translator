@@ -66,6 +66,40 @@ test('setupContextMenu creates context menu with correct options', () => {
   }
 });
 
+test('setupContextMenu cleans up prior context menus with removeAll before creating', (t, done) => {
+  let removeAllCalled = false;
+  let createdOptions = null;
+
+  globalThis.chrome = {
+    contextMenus: {
+      removeAll: (cb) => {
+        removeAllCalled = true;
+        if (cb) cb();
+      },
+      create: (opts, cb) => {
+        createdOptions = opts;
+        if (cb) cb();
+      }
+    }
+  };
+
+  try {
+    setupContextMenu(() => {
+      assert.equal(removeAllCalled, true, 'chrome.contextMenus.removeAll must be called before create');
+      assert.deepEqual(createdOptions, {
+        id: 'ai-translate-selection',
+        title: '✨ Перекласти виділене (AI)',
+        contexts: ['selection']
+      });
+      delete globalThis.chrome;
+      done();
+    });
+  } catch (err) {
+    delete globalThis.chrome;
+    throw err;
+  }
+});
+
 test('handleContextMenuClick dispatches TRIGGER_SELECTION_TRANSLATION to tab', async () => {
   let sentMessage = null;
   let targetTabId = null;
