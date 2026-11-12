@@ -27,13 +27,14 @@ export function normalizeNewlines(str) {
 }
 
 export function buildBatchTranslationPayload(texts, targetLanguage) {
+  const items = texts.map((text, id) => ({ id, text }));
   return {
     contents: [
       {
         role: 'user',
         parts: [
           {
-            text: `You are a professional website translator. Translate the array of text items below into ${targetLanguage}. Maintain accurate phrasing, punctuation, numbers, formatting, line breaks, and proper nouns. Return strict JSON matching {"translations": ["...", "..."]} with the exact same count and order.\n\nInput JSON:\n${JSON.stringify({ texts })}`
+            text: `You are a professional website translator. Translate each of the ${texts.length} items below into ${targetLanguage}.\nCRITICAL RULES:\n1. Translate each item independently according to its "id".\n2. Return strict JSON matching {"translations": ["...", "..."]} with EXACTLY ${texts.length} strings in the exact same order (id 0 to ${texts.length - 1}).\n3. NEVER merge multiple items into a single string, and NEVER split one item into multiple strings.\n4. Preserve phrasing, punctuation, numbers, formatting, line breaks, and proper nouns within each individual item.\n\nInput (${texts.length} items):\n${JSON.stringify({ items })}`
           }
         ]
       }
@@ -111,7 +112,18 @@ export async function translateBatchGemini(texts, targetLanguage, model, apiKey)
   }
 
   const data = await res.json();
-  return parseGeminiResponse(data, texts.length);
+  const translations = parseGeminiResponse(data, texts.length);
+
+  if (translations.length !== texts.length) {
+    if (texts.length === 1) {
+      return [translations.length > 0 ? translations.join('\n') : texts[0]];
+    }
+    return Promise.all(
+      texts.map(item => translateSingleGemini(item, targetLanguage, model, apiKey))
+    );
+  }
+
+  return translations;
 }
 
 export async function translateSingleGemini(text, targetLanguage, model, apiKey) {

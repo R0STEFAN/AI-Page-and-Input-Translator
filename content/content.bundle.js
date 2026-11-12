@@ -156,7 +156,20 @@
       }
       const badges = doc.querySelectorAll('.ai-section-restore-badge');
       if (badges && badges.forEach) {
-        badges.forEach(b => { if (b.remove) b.remove(); });
+        badges.forEach(b => {
+          const parent = b.parentElement;
+          if (parent && parent.style && parent.dataset) {
+            if (parent.dataset.aiOrigPosition !== undefined) {
+              parent.style.position = parent.dataset.aiOrigPosition;
+              delete parent.dataset.aiOrigPosition;
+            }
+            if (parent.dataset.aiOrigPaddingBottom !== undefined) {
+              parent.style.paddingBottom = parent.dataset.aiOrigPaddingBottom;
+              delete parent.dataset.aiOrigPaddingBottom;
+            }
+          }
+          if (b.remove) b.remove();
+        });
       }
     });
   }
@@ -169,8 +182,21 @@
     const prior = sectionElement.querySelector ? sectionElement.querySelector('.ai-section-restore-badge') : null;
     if (prior && prior.remove) prior.remove();
   
-    if (sectionElement.style && (!sectionElement.style.position || sectionElement.style.position === 'static')) {
-      sectionElement.style.position = 'relative';
+    if (sectionElement.style) {
+      if (!sectionElement.dataset) sectionElement.dataset = {};
+      if (sectionElement.dataset.aiOrigPosition === undefined) {
+        sectionElement.dataset.aiOrigPosition = sectionElement.style.position || '';
+      }
+      if (sectionElement.dataset.aiOrigPaddingBottom === undefined) {
+        sectionElement.dataset.aiOrigPaddingBottom = sectionElement.style.paddingBottom || '';
+      }
+      if (!sectionElement.style.position || sectionElement.style.position === 'static') {
+        sectionElement.style.position = 'relative';
+      }
+      const currentPad = parseFloat(sectionElement.style.paddingBottom) || 0;
+      if (currentPad < 38) {
+        sectionElement.style.paddingBottom = '38px';
+      }
     }
   
     const badge = currentDoc.createElement('button');
@@ -208,6 +234,16 @@
           delete el.dataset.aiOriginalText;
         }
       });
+      if (sectionElement.style && sectionElement.dataset) {
+        if (sectionElement.dataset.aiOrigPosition !== undefined) {
+          sectionElement.style.position = sectionElement.dataset.aiOrigPosition;
+          delete sectionElement.dataset.aiOrigPosition;
+        }
+        if (sectionElement.dataset.aiOrigPaddingBottom !== undefined) {
+          sectionElement.style.paddingBottom = sectionElement.dataset.aiOrigPaddingBottom;
+          delete sectionElement.dataset.aiOrigPaddingBottom;
+        }
+      }
       if (badge.remove) badge.remove();
     });
   
