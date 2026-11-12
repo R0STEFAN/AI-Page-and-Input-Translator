@@ -9,6 +9,7 @@ import { replaceTextBatch, restoreOriginalText } from '../content/replacer.js';
 // Helper to create mock DOM elements for testing
 function createMockElement(tag, {
   text = '',
+  html = null,
   parent = null,
   classes = [],
   dataset = {},
@@ -17,11 +18,12 @@ function createMockElement(tag, {
 } = {}) {
   const classList = new Set(classes);
   const children = [];
+  let _innerText = text;
+  let _innerHTML = html !== null ? html : text;
 
   const el = {
     tagName,
     role,
-    innerText: text,
     parentElement: parent,
     children,
     dataset: { ...dataset },
@@ -59,6 +61,10 @@ function createMockElement(tag, {
       walk(this);
       return results;
     },
+    querySelector(selector) {
+      const list = this.querySelectorAll(selector);
+      return list.length > 0 ? list[0] : null;
+    },
     querySelectorAll(selector) {
       const selectors = selector.split(',').map(s => s.trim());
       const results = [];
@@ -95,6 +101,26 @@ function createMockElement(tag, {
       return child;
     }
   };
+
+  Object.defineProperty(el, 'innerHTML', {
+    get: () => _innerHTML,
+    set: (val) => {
+      _innerHTML = val;
+      _innerText = val ? val.replace(/<[^>]*>/g, '') : '';
+    },
+    enumerable: true,
+    configurable: true
+  });
+
+  Object.defineProperty(el, 'innerText', {
+    get: () => _innerText,
+    set: (val) => {
+      _innerText = val;
+      _innerHTML = val;
+    },
+    enumerable: true,
+    configurable: true
+  });
 
   return el;
 }
@@ -217,6 +243,52 @@ test('findMainContent detects feed items parent if >= 3 items present', () => {
   assert.equal(found, feedContainer, 'Should return common parent of feed items');
 });
 
+test('findMainContent properly detects feed container when multiple <article> elements are present', () => {
+  const body = createMockElement('body');
+  const feedContainer = createMockElement('div', { classes: ['feed-container'], parent: body });
+  body.appendChild(feedContainer);
+
+  // 3 article elements each with > 300 characters
+  const art1 = createMockElement('article', { text: 'Article one content. '.repeat(20), parent: feedContainer });
+  const art2 = createMockElement('article', { text: 'Article two content. '.repeat(20), parent: feedContainer });
+  const art3 = createMockElement('article', { text: 'Article three content. '.repeat(20), parent: feedContainer });
+  feedContainer.appendChild(art1);
+  feedContainer.appendChild(art2);
+  feedContainer.appendChild(art3);
+
+  const doc = createMockDoc(body);
+
+  const found = findMainContent(doc);
+  assert.equal(found, feedContainer, 'Must detect common feed container parent rather than first article');
+});
+
+test('findMainContent traverses up to common ancestor when feed items are nested in wrappers', () => {
+  const body = createMockElement('body');
+  const feedGrid = createMockElement('div', { classes: ['feed-grid'], parent: body });
+  body.appendChild(feedGrid);
+
+  const wrap1 = createMockElement('div', { classes: ['card-wrapper'], parent: feedGrid });
+  const item1 = createMockElement('div', { classes: ['card'], text: 'Card 1 content', parent: wrap1 });
+  wrap1.appendChild(item1);
+
+  const wrap2 = createMockElement('div', { classes: ['card-wrapper'], parent: feedGrid });
+  const item2 = createMockElement('div', { classes: ['card'], text: 'Card 2 content', parent: wrap2 });
+  wrap2.appendChild(item2);
+
+  const wrap3 = createMockElement('div', { classes: ['card-wrapper'], parent: feedGrid });
+  const item3 = createMockElement('div', { classes: ['card'], text: 'Card 3 content', parent: wrap3 });
+  wrap3.appendChild(item3);
+
+  feedGrid.appendChild(wrap1);
+  feedGrid.appendChild(wrap2);
+  feedGrid.appendChild(wrap3);
+
+  const doc = createMockDoc(body);
+
+  const found = findMainContent(doc);
+  assert.equal(found, feedGrid, 'Must traverse up to feedGrid ancestor containing all items');
+});
+
 test('findMainContent falls back to density scoring when no semantic or feed items qualify', () => {
   const body = createMockElement('body');
 
@@ -267,9 +339,13 @@ test('collectTextElements returns empty array for null/invalid root', () => {
   assert.deepEqual(collectTextElements({}), []);
 });
 
-test('collectTextElements extracts text targets and stores dataset.aiOriginalText', () => {
+test('collectTextElements extracts text targets and stores dataset.aiOriginalText and aiOriginalHtml', () => {
   const root = createMockElement('div');
-  const p1 = createMockElement('p', { text: 'This is the first paragraph to translate.', parent: root });
+  const p1 = createMockElement('p', {
+    text: 'This is the first paragraph with a link.',
+    html: 'This is the first paragraph with a <a href="https://example.com">link</a>.',
+    parent: root
+  });
   const h2 = createMockElement('h2', { text: 'Header Title', parent: root });
   const li = createMockElement('li', { text: 'List item entry', parent: root });
   root.appendChild(p1);
@@ -278,7 +354,8 @@ test('collectTextElements extracts text targets and stores dataset.aiOriginalTex
 
   const elements = collectTextElements(root);
   assert.equal(elements.length, 3);
-  assert.equal(p1.dataset.aiOriginalText, 'This is the first paragraph to translate.');
+  assert.equal(p1.dataset.aiOriginalText, 'This is the first paragraph with a link.');
+  assert.equal(p1.dataset.aiOriginalHtml, 'This is the first paragraph with a <a href="https://example.com">link</a>.');
   assert.equal(h2.dataset.aiOriginalText, 'Header Title');
   assert.equal(li.dataset.aiOriginalText, 'List item entry');
 });
@@ -301,18 +378,77 @@ test('collectTextElements skips code blocks and short strings', () => {
   assert.equal(elements[0], validP);
 });
 
-test('collectTextElements preserves already cached dataset.aiOriginalText', () => {
+test('collectTextElements ignores parent blocks containing child target blocks', () => {
   const root = createMockElement('div');
-  const p = createMockElement('p', {
-    text: 'Current translated text',
-    dataset: { aiOriginalText: 'True original English text' },
-    parent: root
-  });
-  root.appendChild(p);
+
+  // blockquote containing a p
+  const blockquote = createMockElement('blockquote', { text: 'Outer quote', parent: root });
+  const innerP = createMockElement('p', { text: 'Inner paragraph inside quote', parent: blockquote });
+  blockquote.appendChild(innerP);
+  root.appendChild(blockquote);
+
+  // li containing a p
+  const li = createMockElement('li', { text: 'List item', parent: root });
+  const listP = createMockElement('p', { text: 'Paragraph inside list item', parent: li });
+  li.appendChild(listP);
+  root.appendChild(li);
+
+  // standalone h2
+  const h2 = createMockElement('h2', { text: 'Standalone title', parent: root });
+  root.appendChild(h2);
 
   const elements = collectTextElements(root);
-  assert.equal(elements.length, 1);
-  assert.equal(p.dataset.aiOriginalText, 'True original English text', 'Must not overwrite existing original text');
+
+  assert.ok(!elements.includes(blockquote), 'Must skip outer blockquote containing child p');
+  assert.ok(!elements.includes(li), 'Must skip outer li containing child p');
+  assert.ok(elements.includes(innerP), 'Must include inner p of blockquote');
+  assert.ok(elements.includes(listP), 'Must include inner p of li');
+  assert.ok(elements.includes(h2), 'Must include standalone h2');
+  assert.equal(elements.length, 3);
+});
+
+test('collectTextElements ignores already translated blocks (.ai-translated-block or data-ai-original-html)', () => {
+  const root = createMockElement('div');
+
+  // Element with ai-translated-block class
+  const translatedP = createMockElement('p', {
+    text: 'Вже перекладений текст',
+    classes: ['ai-translated-block'],
+    parent: root
+  });
+  root.appendChild(translatedP);
+
+  // Element with dataset.aiOriginalHtml
+  const cachedP = createMockElement('p', {
+    text: 'Another translated block',
+    dataset: { aiOriginalHtml: '<p>Original text</p>' },
+    parent: root
+  });
+  root.appendChild(cachedP);
+
+  // Element inside an already translated container
+  const translatedContainer = createMockElement('div', {
+    classes: ['ai-translated-block'],
+    parent: root
+  });
+  const childOfTranslated = createMockElement('p', {
+    text: 'Child of translated container',
+    parent: translatedContainer
+  });
+  translatedContainer.appendChild(childOfTranslated);
+  root.appendChild(translatedContainer);
+
+  // Fresh untranslated element
+  const freshP = createMockElement('p', {
+    text: 'Fresh text waiting to be translated',
+    parent: root
+  });
+  root.appendChild(freshP);
+
+  const elements = collectTextElements(root);
+
+  assert.equal(elements.length, 1, 'Only fresh untranslated element should be collected');
+  assert.equal(elements[0], freshP);
 });
 
 // ==========================================
@@ -368,6 +504,30 @@ test('restoreOriginalText reverts translated elements and cleans up classes/data
   assert.equal(p2.dataset.aiOriginalText, undefined);
 
   assert.equal(body.dataset.aiPageTranslated, undefined);
+});
+
+test('restoreOriginalText recovers original innerHTML with <a> links intact', () => {
+  const body = createMockElement('body', { dataset: { aiPageTranslated: 'true' } });
+  const originalHtml = 'Click <a href="https://example.com">here</a> for <strong>more</strong> info.';
+  const p = createMockElement('p', {
+    text: 'Translated text without link markup',
+    classes: ['ai-translated-block'],
+    dataset: {
+      aiOriginalText: 'Click here for more info.',
+      aiOriginalHtml: originalHtml
+    },
+    parent: body
+  });
+  body.appendChild(p);
+
+  const doc = createMockDoc(body);
+  restoreOriginalText(doc);
+
+  assert.equal(p.innerHTML, originalHtml, 'Must restore full HTML including <a> tags');
+  assert.equal(p.dataset.aiOriginalHtml, undefined, 'Must clean up aiOriginalHtml');
+  assert.equal(p.dataset.aiOriginalText, undefined, 'Must clean up aiOriginalText');
+  assert.ok(!p.classList.contains('ai-translated-block'), 'Must remove translated class');
+  assert.equal(body.dataset.aiPageTranslated, undefined, 'Must clean up page translated flag');
 });
 
 // ==========================================

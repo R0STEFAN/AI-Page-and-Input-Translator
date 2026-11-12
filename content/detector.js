@@ -7,16 +7,37 @@ export function findMainContent(doc = (typeof document !== 'undefined' ? documen
   if (!doc) return null;
 
   // Step 1: Explicit semantic tags
-  const semanticMain = doc.querySelector ? doc.querySelector('main, [role="main"], article') : null;
+  // Do not select a single <article> if the page has 3 or more articles (feed/list page)
+  const articleCount = doc.querySelectorAll ? doc.querySelectorAll('article').length : 0;
+  const semanticSelector = articleCount >= 3 ? 'main, [role="main"]' : 'main, [role="main"], article';
+  const semanticMain = doc.querySelector ? doc.querySelector(semanticSelector) : null;
   if (semanticMain && (semanticMain.innerText || '').trim().length > 300) {
     return semanticMain;
   }
 
   // Step 2: Feed / Article list detection
-  const feedItems = doc.querySelectorAll ? doc.querySelectorAll('article, .post, .card, .feed-item, .article-item') : [];
+  const feedSelector = 'article, .post, .card, .feed-item, .article-item';
+  const feedItems = doc.querySelectorAll ? doc.querySelectorAll(feedSelector) : [];
   if (feedItems && feedItems.length >= 3) {
-    // Find lowest common ancestor
-    const parent = feedItems[0].parentElement;
+    let parent = feedItems[0].parentElement;
+    while (parent && parent !== doc.body) {
+      const containedCount = parent.querySelectorAll ? parent.querySelectorAll(feedSelector).length : 0;
+      if (containedCount >= feedItems.length) {
+        return parent;
+      }
+      if (containedCount >= 3) {
+        // Traverse up if an ancestor contains more feed items up to doc.body
+        if (parent.parentElement && parent.parentElement !== doc.body) {
+          const parentCount = parent.parentElement.querySelectorAll ? parent.parentElement.querySelectorAll(feedSelector).length : 0;
+          if (parentCount > containedCount) {
+            parent = parent.parentElement;
+            continue;
+          }
+        }
+        return parent;
+      }
+      parent = parent.parentElement;
+    }
     if (parent && parent !== doc.body) return parent;
   }
 
