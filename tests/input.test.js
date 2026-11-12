@@ -12,7 +12,9 @@ import {
   findActiveEditableElement,
   readEditableText,
   writeEditableText,
-  translateActiveInput
+  translateActiveInput,
+  isRichTextEditor,
+  resetInputTranslationState
 } from '../content/input.js';
 import { handleContentMessage } from '../content/content.js';
 import { initPopup } from '../popup/popup.js';
@@ -632,4 +634,110 @@ test('writeEditableText clears contenteditable before insert and never duplicate
   assert.equal(editor.dispatchedEvents.filter(e => e.type === 'beforeinput').length, 0, 'Must NOT fire extra beforeinput that would duplicate text');
   const occurrences = editor.innerText.split('Translated text').length - 1;
   assert.equal(occurrences, 1, 'Translated text must appear at most once');
+});
+
+test('isRichTextEditor identifies Lexical, Reddit composer, Slate, and role="textbox" contenteditables', () => {
+  assert.equal(isRichTextEditor(null), false);
+
+  const plainInput = new MockEditableElement('input');
+  assert.equal(isRichTextEditor(plainInput), false);
+
+  const plainDiv = new MockEditableElement('div', { isContentEditable: true });
+  assert.equal(isRichTextEditor(plainDiv), false);
+
+  // Reddit composer
+  const redditComposerHost = new MockEditableElement('shreddit-composer');
+  const redditEditor = new MockEditableElement('div', { isContentEditable: true });
+  redditEditor.closest = (sel) => (sel.includes('shreddit-composer') ? redditComposerHost : null);
+  assert.equal(isRichTextEditor(redditEditor), true);
+
+  // Lexical attribute
+  const lexicalEditor = new MockEditableElement('div', {
+    isContentEditable: true,
+    attributes: { 'data-lexical-editor': 'true' }
+  });
+  lexicalEditor.hasAttribute = (name) => name === 'data-lexical-editor';
+  assert.equal(isRichTextEditor(lexicalEditor), true);
+
+  // role="textbox" contenteditable
+  const roleTextbox = new MockEditableElement('div', {
+    isContentEditable: true,
+    attributes: { role: 'textbox' }
+  });
+  assert.equal(isRichTextEditor(roleTextbox), true);
+});
+
+test('writeEditableText on rich text editor exclusively uses paste event and skips execCommand insertText', () => {
+  const doc = new MockDoc();
+  const execCalls = [];
+  doc.execCommand = (cmd, _ui, val) => {
+    execCalls.push({ cmd, val });
+    return true;
+  };
+
+  const richEditor = new MockEditableElement('div', {
+    isContentEditable: true,
+    attributes: { role: 'textbox' }
+  });
+
+  class FakeDataTransfer {
+    constructor() { this.data = new Map(); }
+    setData(type, val) { this.data.set(type, val); }
+    getData(type) { return this.data.get(type) || ''; }
+  }
+  class FakeClipboardEvent {
+    constructor(type, init) {
+      this.type = type;
+      this.composed = init?.composed;
+      this.bubbles = init?.bubbles;
+      this.clipboardData = init?.clipboardData;
+    }
+  }
+
+  const win = {
+    getSelection: () => ({ removeAllRanges: () => {}, addRange: () => {} }),
+    ClipboardEvent: FakeClipboardEvent,
+    DataTransfer: FakeDataTransfer
+  };
+
+  const res = writeEditableText(richEditor, 'Translated for Reddit', doc, win);
+  assert.equal(res, true);
+
+  const pasteEvents = richEditor.dispatchedEvents.filter(e => e.type === 'paste');
+  assert.equal(pasteEvents.length, 1, 'Should dispatch exactly one paste event');
+  assert.equal(pasteEvents[0].clipboardData.getData('text/plain'), 'Translated for Reddit');
+  assert.equal(pasteEvents[0].composed, true);
+
+  assert.equal(
+    execCalls.filter(c => c.cmd === 'insertText').length,
+    0,
+    'Must NOT call execCommand insertText on rich-text editor to prevent double-insertion'
+  );
+});
+
+test('translateActiveInput prevents concurrent translations with re-entrancy lock', async () => {
+  resetInputTranslationState();
+  const doc = new MockDoc();
+  const textarea = new MockEditableElement('textarea', { value: 'Тестовий текст' });
+  doc.activeElement = textarea;
+
+  let resolveMessage;
+  const mockChrome = {
+    runtime: {
+      sendMessage: () => new Promise(resolve => {
+        resolveMessage = resolve;
+      })
+    }
+  };
+
+  const p1 = translateActiveInput(doc, mockChrome);
+  // Second concurrent call while first is in progress
+  const p2 = translateActiveInput(doc, mockChrome);
+
+  const res2 = await p2;
+  assert.equal(res2, false, 'Second concurrent call must be rejected immediately by lock');
+
+  resolveMessage({ ok: true, data: { translation: 'Test text' } });
+  const res1 = await p1;
+  assert.equal(res1, true, 'First call should complete successfully');
 });

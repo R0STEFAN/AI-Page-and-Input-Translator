@@ -262,10 +262,12 @@ export async function initPopup(
 
   if (translateInputBtn) {
     translateInputBtn.addEventListener('click', async () => {
+      translateInputBtn.disabled = true;
       try {
         await chromeApi?.tabs?.sendMessage?.(tab.id, { action: 'TRANSLATE_ACTIVE_INPUT' });
       } catch (err) {
         alertFn(`Не вдалося перекласти поле: ${err.message}`);
+        translateInputBtn.disabled = false;
         return;
       }
       if (typeof window !== 'undefined' && window.close) {

@@ -1,4 +1,9 @@
 let lastFocusedEditable = null;
+let isTranslatingInput = false;
+
+export function resetInputTranslationState() {
+  isTranslatingInput = false;
+}
 
 const NON_TEXT_INPUT_TYPES = new Set([
   'button', 'checkbox', 'color', 'date', 'datetime-local',
@@ -234,6 +239,33 @@ function selectAllContentEditable(el, currentDoc, currentWin) {
   }
 }
 
+export function isRichTextEditor(el) {
+  if (!el) return false;
+  if (typeof el.closest === 'function') {
+    if (el.closest('shreddit-composer, [data-lexical-editor], [data-slate-editor], .ProseMirror, [data-editor], .DraftEditor-root, .ql-editor')) {
+      return true;
+    }
+  }
+  if (el.hasAttribute?.('data-lexical-editor') ||
+      el.hasAttribute?.('data-slate-editor') ||
+      el.classList?.contains?.('ProseMirror') ||
+      el.classList?.contains?.('ql-editor') ||
+      el.classList?.contains?.('DraftEditor-root')) {
+    return true;
+  }
+  if (el.getAttribute?.('role') === 'textbox' && (el.isContentEditable === true || el.getAttribute?.('contenteditable') === 'true')) {
+    return true;
+  }
+  const root = typeof el.getRootNode === 'function' ? el.getRootNode() : null;
+  if (root && root.host) {
+    const hostTag = (root.host.tagName || '').toLowerCase();
+    if (hostTag.includes('composer') || hostTag.includes('editor')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function writeEditableText(
   el,
   translatedText,
@@ -303,18 +335,46 @@ export function writeEditableText(
     return true;
   }
 
-  // Rich-text / contenteditable: select all and clear first, never stack multiple insertions
+  // Rich-text / contenteditable
   const readText = () => (el.innerText !== undefined ? el.innerText : el.textContent) || '';
 
+  // Select all content before replacing
   selectAllContentEditable(el, currentDoc, currentWin);
+
+  const ClipboardEventCtor = currentWin?.ClipboardEvent || (typeof ClipboardEvent !== 'undefined' ? ClipboardEvent : null);
+  const DataTransferCtor = currentWin?.DataTransfer || (typeof DataTransfer !== 'undefined' ? DataTransfer : null);
+
+  const dispatchPaste = () => {
+    if (!ClipboardEventCtor || !DataTransferCtor || typeof el.dispatchEvent !== 'function') return false;
+    try {
+      const dt = new DataTransferCtor();
+      dt.setData('text/plain', translatedText);
+      const pasteEvent = new ClipboardEventCtor('paste', {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clipboardData: dt,
+      });
+      el.dispatchEvent(pasteEvent);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // If this is a known modern rich-text editor (Lexical/Reddit, ProseMirror, Slate, Draft.js, role="textbox"):
+  // ALWAYS use paste event exclusively. Calling execCommand('insertText') causes Lexical to duplicate text!
+  if (isRichTextEditor(el)) {
+    if (dispatchPaste()) {
+      return true;
+    }
+  }
+
+  // For standard/vanilla contenteditable:
   if (typeof currentDoc?.execCommand === 'function') {
     try {
       currentDoc.execCommand('delete', false, null);
     } catch {}
-  }
-
-  if (readText().trim()) {
-    selectAllContentEditable(el, currentDoc, currentWin);
   }
 
   let execOk = false;
@@ -327,27 +387,17 @@ export function writeEditableText(
   }
 
   let currentVal = readText();
-  if (currentVal.trim() === translatedText.trim()) {
+  if (execOk || currentVal.trim() === translatedText.trim()) {
     return true;
   }
 
-  // Only attempt paste if insertText did NOT already insert translatedText into the editor
+  // Fallback: only if execCommand failed AND the text is not yet present
   if (!currentVal.includes(translatedText)) {
-    const ClipboardEventCtor = currentWin?.ClipboardEvent || (typeof ClipboardEvent !== 'undefined' ? ClipboardEvent : null);
-    const DataTransferCtor = currentWin?.DataTransfer || (typeof DataTransfer !== 'undefined' ? DataTransfer : null);
-
-    if (ClipboardEventCtor && DataTransferCtor && typeof el.dispatchEvent === 'function') {
-      try {
-        selectAllContentEditable(el, currentDoc, currentWin);
-        const dt = new DataTransferCtor();
-        dt.setData('text/plain', translatedText);
-        const pasteEvent = new ClipboardEventCtor('paste', {
-          bubbles: true,
-          cancelable: true,
-          clipboardData: dt,
-        });
-        el.dispatchEvent(pasteEvent);
-      } catch {}
+    if (dispatchPaste()) {
+      currentVal = readText();
+      if (currentVal.trim() === translatedText.trim() || currentVal.includes(translatedText)) {
+        return true;
+      }
     }
   }
 
@@ -417,6 +467,9 @@ export async function translateActiveInput(
   chromeObj = typeof chrome !== 'undefined' ? chrome : null,
   win = typeof window !== 'undefined' ? window : null
 ) {
+  if (isTranslatingInput) return false;
+  isTranslatingInput = true;
+
   const currentDoc = doc || (typeof document !== 'undefined' ? document : null);
   const currentChrome = chromeObj || (typeof chrome !== 'undefined' ? chrome : null);
   const currentWin = win || (typeof window !== 'undefined' ? window : null);
@@ -425,25 +478,27 @@ export async function translateActiveInput(
     if (currentWin?.alert) currentWin.alert(msg);
   };
 
-  const targetEl = findActiveEditableElement(currentDoc);
-  if (!targetEl) {
-    alertFn('Спочатку поставте курсор у поле введення (input, textarea або коментар) та напишіть текст.');
-    return false;
-  }
-
-  const rawText = readEditableText(targetEl);
-  if (!rawText || !rawText.trim()) {
-    alertFn('Поле введення порожнє. Напишіть текст перед перекладом.');
-    return false;
-  }
-
-  if (!currentChrome?.runtime?.sendMessage) {
-    throw new Error('Chrome runtime messaging is not available');
-  }
-
-  const cleanupOverlay = showInputThinkingOverlay(targetEl, currentDoc, currentWin);
+  let cleanupOverlay = () => {};
 
   try {
+    const targetEl = findActiveEditableElement(currentDoc);
+    if (!targetEl) {
+      alertFn('Спочатку поставте курсор у поле введення (input, textarea або коментар) та напишіть текст.');
+      return false;
+    }
+
+    const rawText = readEditableText(targetEl);
+    if (!rawText || !rawText.trim()) {
+      alertFn('Поле введення порожнє. Напишіть текст перед перекладом.');
+      return false;
+    }
+
+    if (!currentChrome?.runtime?.sendMessage) {
+      throw new Error('Chrome runtime messaging is not available');
+    }
+
+    cleanupOverlay = showInputThinkingOverlay(targetEl, currentDoc, currentWin);
+
     const res = await currentChrome.runtime.sendMessage({
       type: 'TRANSLATE_INPUT',
       payload: { text: rawText }
@@ -470,5 +525,6 @@ export async function translateActiveInput(
     return false;
   } finally {
     cleanupOverlay();
+    isTranslatingInput = false;
   }
 }
