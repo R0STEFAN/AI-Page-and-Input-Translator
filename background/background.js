@@ -96,14 +96,14 @@ export function handleMessage(message, sender, sendResponse) {
 
         case 'TRANSLATE_BATCH': {
           const settings = await getSettings();
-          const { texts } = message.payload || {};
+          const { texts, sourceLanguage } = message.payload || {};
           const targetLang = message.payload?.targetLanguage || settings.targetLanguage;
 
           if (settings.activeEngine === 'local') {
             const res = await sendToOffscreen({
               target: 'offscreen',
               type: 'TRANSLATE_LOCAL_BATCH',
-              payload: { texts, targetLanguage: targetLang }
+              payload: { texts, targetLanguage: targetLang, sourceLanguage }
             });
             sendResponse({ ok: true, data: res });
           } else {
@@ -120,14 +120,14 @@ export function handleMessage(message, sender, sendResponse) {
 
         case 'TRANSLATE_SELECTION': {
           const settings = await getSettings();
-          const { text } = message.payload || {};
+          const { text, sourceLanguage } = message.payload || {};
           const targetLang = message.payload?.targetLanguage || settings.targetLanguage;
 
           if (settings.activeEngine === 'local') {
             const res = await sendToOffscreen({
               target: 'offscreen',
               type: 'TRANSLATE_LOCAL_BATCH',
-              payload: { texts: [text], targetLanguage: targetLang }
+              payload: { texts: [text], targetLanguage: targetLang, sourceLanguage }
             });
             sendResponse({ ok: true, data: { translation: res?.translations?.[0] || text } });
           } else {

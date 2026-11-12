@@ -36,9 +36,15 @@ export async function translateMainContent(
       throw new Error('Chrome runtime messaging is not available');
     }
 
+    const payload = { texts };
+    const pageLang = currentDoc?.documentElement?.lang;
+    if (pageLang) {
+      payload.sourceLanguage = pageLang;
+    }
+
     const res = await currentChrome.runtime.sendMessage({
       type: 'TRANSLATE_BATCH',
-      payload: { texts }
+      payload
     });
 
     if (currentDoc?.body?.dataset?.aiPageTranslated !== 'true') {

@@ -138,7 +138,15 @@ export async function initOptions(
         if (msg.type === 'LOCAL_MODEL_DOWNLOAD_PROGRESS') {
           if (progressBar) progressBar.style.width = `${msg.progress}%`;
           if (progressText) {
-            progressText.textContent = msg.file ? `Завантаження (${msg.file}): ${msg.progress}%` : `${msg.progress}%`;
+            let label = `${msg.progress}%`;
+            if (msg.file) {
+              if (msg.loadedMb && msg.totalMb) {
+                label = `Завантаження (${msg.file}): ${msg.progress}% (${msg.loadedMb} / ${msg.totalMb} MB)`;
+              } else {
+                label = `Завантаження (${msg.file}): ${msg.progress}%`;
+              }
+            }
+            progressText.textContent = label;
           }
         }
       };

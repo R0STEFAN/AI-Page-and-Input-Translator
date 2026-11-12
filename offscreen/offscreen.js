@@ -1,3 +1,42 @@
+// Filter out ONNX Runtime graph optimization & initializer removal warnings
+// so Chrome's extension error log (chrome://extensions/) stays clean.
+const isIgnoredOnnxLog = (args) => {
+  for (const arg of args) {
+    const text = typeof arg === 'string' ? arg : (arg && arg.message ? arg.message : '');
+    if (
+      text.includes('[W:onnxruntime') ||
+      text.includes('CleanUnusedInitializersAndNodeArgs') ||
+      text.includes('Removing initializer')
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+if (typeof console !== 'undefined') {
+  const _origWarn = console.warn;
+  console.warn = function(...args) {
+    if (isIgnoredOnnxLog(args)) return;
+    _origWarn.apply(console, args);
+  };
+
+  const _origError = console.error;
+  console.error = function(...args) {
+    if (isIgnoredOnnxLog(args)) return;
+    _origError.apply(console, args);
+  };
+
+  const _origInfo = console.info;
+  console.info = function(...args) {
+    if (isIgnoredOnnxLog(args)) return;
+    _origInfo.apply(console, args);
+  };
+}
+
+// Estimated size of Xenova/nllb-200-distilled-600M quantized weights & tokenizer (~874 MB)
+export const ESTIMATED_MODEL_BYTES = 916_800_000;
+
 // Language code dictionary for NLLB-200
 export const NLLB_LANG_MAP = {
   'uk': 'ukr_Cyrl',
@@ -21,13 +60,27 @@ export const NLLB_LANG_MAP = {
   'spanish': 'spa_Latn',
   'it': 'ita_Latn',
   'italiano': 'ita_Latn',
-  'italian': 'ita_Latn'
+  'italian': 'ita_Latn',
+  'pt': 'por_Latn',
+  'portuguese': 'por_Latn',
+  'ru': 'rus_Cyrl',
+  'russian': 'rus_Cyrl',
+  'nl': 'nld_Latn',
+  'dutch': 'nld_Latn',
+  'tr': 'tur_Latn',
+  'turkish': 'tur_Latn',
+  'zh': 'zho_Hans',
+  'chinese': 'zho_Hans',
+  'ja': 'jpn_Jpan',
+  'japanese': 'jpn_Jpan'
 };
 
 export function getNllbLanguageCode(lang) {
   if (!lang) return 'ukr_Cyrl';
   const clean = lang.trim().toLowerCase();
-  return NLLB_LANG_MAP[clean] || 'ukr_Cyrl';
+  if (NLLB_LANG_MAP[clean]) return NLLB_LANG_MAP[clean];
+  const prefix = clean.split('-')[0].split('_')[0];
+  return NLLB_LANG_MAP[prefix] || 'ukr_Cyrl';
 }
 
 let translatorPipeline = null;
@@ -48,6 +101,11 @@ export async function getPipeline(progressCallback) {
     const { pipeline, env } = await import('./vendor/transformers.js');
     env.allowLocalModels = false;
     env.useBrowserCache = true;
+
+    // Suppress verbose ONNX Runtime logging
+    if (env.backends?.onnx) {
+      env.backends.onnx.logLevel = 'error';
+    }
 
     // Direct WASM binaries to local vendored files inside the extension
     if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
@@ -73,47 +131,43 @@ export async function getPipeline(progressCallback) {
       }
     }
 
-    // Monotonic multi-file download progress tracking
-    const fileProgress = {};
-    let maxPercent = 0;
+    // Smooth monotonic multi-file download progress tracking
+    const fileLoaded = {};
+    let lastPercent = 0;
 
     translatorPipeline = await pipeline('translation', 'Xenova/nllb-200-distilled-600M', {
       device,
       progress_callback: (p) => {
         if (!p || !p.file || !progressCallback) return;
 
-        if (p.status === 'initiate' || p.status === 'download') {
-          if (!fileProgress[p.file]) {
-            fileProgress[p.file] = { loaded: 0, total: p.total || 0 };
-          }
-        } else if (p.status === 'progress') {
-          fileProgress[p.file] = {
-            loaded: p.loaded || 0,
-            total: Math.max(p.total || 0, fileProgress[p.file]?.total || 0)
-          };
-        } else if (p.status === 'done') {
-          if (fileProgress[p.file]) {
-            fileProgress[p.file].loaded = fileProgress[p.file].total;
-          }
+        if (typeof p.loaded === 'number') {
+          fileLoaded[p.file] = p.loaded;
+        } else if (p.status === 'done' && p.total) {
+          fileLoaded[p.file] = p.total;
         }
 
-        let totalBytes = 0;
         let loadedBytes = 0;
-        for (const item of Object.values(fileProgress)) {
-          totalBytes += item.total;
-          loadedBytes += item.loaded;
+        for (const bytes of Object.values(fileLoaded)) {
+          loadedBytes += bytes;
         }
 
-        let percent = 0;
-        if (totalBytes > 0) {
-          percent = Math.min(100, Math.round((loadedBytes / totalBytes) * 100));
-        }
+        const totalBytes = Math.max(ESTIMATED_MODEL_BYTES, loadedBytes);
+        const percent = Math.min(99, Math.round((loadedBytes / totalBytes) * 100));
+        lastPercent = Math.max(lastPercent, percent);
 
-        maxPercent = Math.max(maxPercent, percent);
         const fileName = p.file.split('/').pop();
-        progressCallback(maxPercent, fileName);
+        const loadedMb = (loadedBytes / (1024 * 1024)).toFixed(1);
+        const totalMb = (totalBytes / (1024 * 1024)).toFixed(0);
+
+        progressCallback(lastPercent, fileName, loadedMb, totalMb);
       }
     });
+
+    if (progressCallback) {
+      const mb = (ESTIMATED_MODEL_BYTES / (1024 * 1024)).toFixed(0);
+      progressCallback(100, 'Готово', mb, mb);
+    }
+
     return translatorPipeline;
   } finally {
     isModelLoading = false;
@@ -130,11 +184,13 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     }
 
     if (message.type === 'LOAD_LOCAL_MODEL') {
-      getPipeline((percent, file) => {
+      getPipeline((percent, file, loadedMb, totalMb) => {
         chrome.runtime.sendMessage({
           type: 'LOCAL_MODEL_DOWNLOAD_PROGRESS',
           progress: percent,
-          file: file
+          file: file,
+          loadedMb: loadedMb,
+          totalMb: totalMb
         }).catch(() => {});
       })
         .then(() => sendResponse({ ok: true, data: { success: true } }))
@@ -146,15 +202,27 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
       (async () => {
         try {
           const pipe = await getPipeline();
-          const { texts, targetLanguage } = message.payload;
+          const { texts, targetLanguage, sourceLanguage } = message.payload || {};
           const tgtLangCode = getNllbLanguageCode(targetLanguage);
+          const srcLangCode = sourceLanguage ? getNllbLanguageCode(sourceLanguage) : undefined;
 
           const translations = [];
-          for (const text of texts) {
-            const out = await pipe(text, {
-              tgt_lang: tgtLangCode
-            });
-            translations.push(out[0]?.translation_text || text);
+          for (const text of (texts || [])) {
+            if (!text || !text.trim()) {
+              translations.push(text || '');
+              continue;
+            }
+            try {
+              const opts = { tgt_lang: tgtLangCode, max_new_tokens: 256 };
+              if (srcLangCode && srcLangCode !== tgtLangCode) {
+                opts.src_lang = srcLangCode;
+              }
+              const out = await pipe(text, opts);
+              translations.push(out[0]?.translation_text || text);
+            } catch (err) {
+              console.warn('Paragraph translation fallback error:', err);
+              translations.push(text);
+            }
           }
           sendResponse({ ok: true, data: { translations } });
         } catch (err) {
